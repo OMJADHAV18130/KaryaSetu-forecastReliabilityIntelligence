@@ -1,0 +1,167 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #root {
+    height: 100%;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-slate-200 rounded-xl p-4 shadow-sm;
+  }
+
+  .card-sm {
+    @apply bg-white border border-slate-200 rounded-lg p-3 shadow-sm;
+  }
+
+  .btn-primary {
+    @apply bg-blue-600 text-white font-semibold px-4 py-2 rounded-md text-sm hover:bg-blue-700 transition-colors shadow-sm;
+  }
+
+  .btn-ghost {
+    @apply bg-white border border-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-md text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors;
+  }
+
+  .btn-danger {
+    @apply bg-red-50 border border-red-200 text-red-700 font-medium px-3 py-1.5 rounded-md text-sm hover:bg-red-100 transition-colors;
+  }
+
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3;
+  }
+
+  .metric-value {
+    @apply font-mono font-bold text-slate-900;
+  }
+
+  .demo-badge {
+    @apply bg-amber-50 border border-amber-300 text-amber-800 text-xs font-semibold px-2 py-0.5 rounded;
+  }
+
+  .severity-high {
+    @apply bg-red-50 text-red-700 border border-red-200;
+  }
+
+  .severity-medium {
+    @apply bg-amber-50 text-amber-700 border border-amber-200;
+  }
+
+  .severity-low {
+    @apply bg-emerald-50 text-emerald-700 border border-emerald-200;
+  }
+
+  .skeleton {
+    @apply bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded;
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Leaflet map — clean light background matching official India map presentation */
+  .leaflet-container {
+    background: #eef2f6 !important;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .leaflet-popup-content-wrapper {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1) !important;
+  }
+
+  .leaflet-popup-tip {
+    background: #ffffff !important;
+  }
+
+  .leaflet-popup-close-button {
+    color: #64748b !important;
+  }
+
+  .leaflet-control-zoom a {
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #2563eb !important;
+    font-weight: 700;
+  }
+
+  .leaflet-control-zoom a:hover {
+    background: #f8fafc !important;
+  }
+
+  /* Table styles */
+  .data-table th {
+    @apply bg-slate-50 text-slate-600 text-xs font-semibold uppercase tracking-wider px-4 py-3 text-left border-b border-slate-200;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 border-b border-slate-100 text-sm text-slate-700;
+  }
+
+  .data-table tr:hover td {
+    @apply bg-slate-50/80;
+  }
+
+  .data-table tr:last-child td {
+    @apply border-b-0;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(135deg, #2563eb, #0284c7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
