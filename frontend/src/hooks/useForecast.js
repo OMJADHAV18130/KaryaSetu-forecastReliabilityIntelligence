@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   getOverview,
+  getGridForecast,
   getForecastMap,
   getRegionDetail,
   getBustRisk,
@@ -9,13 +10,26 @@ import {
   getExplanation,
   getModelPerformance,
   getApiHealth,
+  getModelGrid,
+  getModelRealCases,
+  getModelMetrics,
 } from '../services/api';
 
-export function useOverview() {
+export function useOverview(leadDay = 5) {
   return useQuery({
-    queryKey: ['overview'],
-    queryFn: getOverview,
-    staleTime: 5 * 60 * 1000,
+    queryKey: ['overview', leadDay],
+    queryFn: () => getOverview(leadDay),
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+}
+
+export function useGridForecast({ day = 'D5', threshold = 40 } = {}) {
+  return useQuery({
+    queryKey: ['gridForecast', day, threshold],
+    queryFn: () => getGridForecast({ day, threshold }),
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
   });
 }
 
@@ -23,7 +37,32 @@ export function useForecastMap({ variable, day, layer } = {}) {
   return useQuery({
     queryKey: ['forecastMap', variable, day, layer],
     queryFn: () => getForecastMap({ variable, day, layer }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+}
+
+export function useModelGrid() {
+  return useQuery({
+    queryKey: ['modelGrid'],
+    queryFn: getModelGrid,
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+export function useModelRealCases() {
+  return useQuery({
+    queryKey: ['modelRealCases'],
+    queryFn: getModelRealCases,
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+export function useModelMetrics() {
+  return useQuery({
+    queryKey: ['modelMetrics'],
+    queryFn: getModelMetrics,
+    staleTime: 10 * 60 * 1000,
   });
 }
 

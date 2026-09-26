@@ -1,0 +1,51 @@
+{
+  "features": [
+    "total_precipitation_24hr",
+    "2m_temperature",
+    "mean_sea_level_pressure",
+    "10m_u_component_of_wind",
+    "10m_v_component_of_wind",
+    "specific_humidity_850",
+    "geopotential_500",
+    "vertical_velocity_500",
+    "longitude",
+    "latitude",
+    "lead_hours"
+  ],
+  "feature_count": 11,
+  "hyperparameters": {
+    "learning_rate": 0.02,
+    "max_depth": 4,
+    "n_estimators": 200,
+    "subsample": 0.8,
+    "colsample_bytree": 0.9,
+    "min_child_weight": 3,
+    "gamma": 0.1,
+    "reg_alpha": 0.1,
+    "reg_lambda": 2,
+    "scale_pos_weight": 9.0,
+    "objective": "binary:logistic",
+    "eval_metric": "logloss",
+    "random_state": 42,
+    "n_jobs": -1
+  },
+  "model_version": "xgb-rainfall-bust-v1",
+  "model_type": "XGBoost + Sigmoid Calibration",
+  "training_period": "June-July 2019",
+  "validation_period": "August 2019",
+  "test_period": "September 2019",
+  "metrics": {
+    "roc_auc": 0.978,
+    "pr_auc": 0.9787,
+    "mcc": 0.8284,
+    "accuracy": 0.9133,
+    "brier_raw": 0.105607,
+    "brier_calibrated": 0.064236,
+    "confusion_matrix": {
+      "true_negatives": 347,
+      "false_positives": 48,
+      "false_negatives": 21,
+      "true_positives": 380
+    }
+  }
+}
