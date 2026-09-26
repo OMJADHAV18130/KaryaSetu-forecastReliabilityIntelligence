@@ -1,6 +1,7 @@
 import math
 from typing import List, Dict, Any
 from .schemas import WeatherFeatures, PredictionResponse, FeatureContribution, FeatureMeta
+from .untitled9 import predict_single, FEATURE_COLS
 
 FEATURE_METADATA: List[FeatureMeta] = [
     FeatureMeta(
@@ -139,62 +140,23 @@ FEATURE_METADATA: List[FeatureMeta] = [
 def predict_bust_risk(feat: WeatherFeatures, threshold: float = 40.0) -> PredictionResponse:
     """
     ML Bust-Risk & Reliability Inference Engine for Medium-Range Forecasts.
-    Evaluates non-linear atmospheric instability, ensemble spread, and lead time decay.
+    Powered by trained XGBoost pipeline from untitled9.py (Untitled9.ipynb).
     """
-    # 1. Lead time decay: error growth follows non-linear atmospheric chaos dynamics
-    # Day 1: base risk ~5%, Day 5: ~35%, Day 10: ~70%
+    # Run trained model inference from untitled9.py
+    u9_pred = predict_single(feat.model_dump())
+    bust_prob = u9_pred["bust_probability"]
+    confidence = u9_pred["confidence_score"]
+    risk_level = u9_pred["risk_level"]
+    primary_driver = u9_pred["primary_failure_driver"]
+
+    # Calculate individual feature contribution factors
     lead_effect = 4.0 + (feat.lead_time_days ** 1.6) * 1.8
-
-    # 2. Convective / Vertical velocity & moisture coupling
-    # Strong updraft (negative vertical velocity Pa/s) combined with high lower-tropospheric moisture
-    updraft_intensity = max(0.0, -feat.vertical_velocity_500)  # Pa/s upward
+    updraft_intensity = max(0.0, -feat.vertical_velocity_500)
     moisture_factor = max(0.0, feat.specific_humidity_850 - 6.0) / 10.0
-    convective_risk = (updraft_intensity * 14.0) + (moisture_factor * 10.0)
-
-    # 3. High precipitation bust propensity (heavy rainfall exhibits highest NWP displacement errors)
     precip_risk = math.log1p(feat.precipitation_24h) * 3.5
-
-    # 4. CAPE thermodynamic instability
     cape_risk = (feat.cape / 1000.0) * 4.5
-
-    # 5. Ensemble spread divergence
     spread_risk = feat.ensemble_spread * 2.8
-
-    # 6. Synoptic anomalies (pressure & wind shear)
-    wind_speed = math.sqrt(feat.u_wind_10m**2 + feat.v_wind_10m**2)
-    wind_risk = (wind_speed / 15.0) * 3.0
-    
-    mslp_anomaly = abs(feat.mean_sea_level_pressure - 1012.0)
-    synoptic_risk = (mslp_anomaly / 10.0) * 3.2
-
-    # Total raw bust risk score
-    raw_bust = lead_effect + convective_risk + precip_risk + cape_risk + spread_risk + wind_risk + synoptic_risk
-    bust_prob = max(3.0, min(97.0, round(raw_bust, 1)))
-
-    # Overall reliability / confidence is inverse to bust probability with lead time damping
-    confidence = max(5.0, min(98.0, round(100.0 - (bust_prob * 0.92) - (feat.lead_time_days * 1.5), 1)))
-
-    # Determine risk level
-    if bust_prob >= 70.0:
-        risk_level = "CRITICAL"
-    elif bust_prob >= 50.0:
-        risk_level = "HIGH"
-    elif bust_prob >= 30.0:
-        risk_level = "MEDIUM"
-    else:
-        risk_level = "LOW"
-
-    # Identify primary failure driver
-    drivers = [
-        ("Lead Time Horizon (Day " + str(feat.lead_time_days) + ")", lead_effect),
-        ("Vertical Velocity & Convective Updrafts", updraft_intensity * 14.0),
-        ("850 hPa Moisture Saturation", moisture_factor * 10.0),
-        ("Ensemble Member Spread", spread_risk),
-        ("Precipitation Volume Discrepancy", precip_risk),
-        ("Thermodynamic Instability (CAPE)", cape_risk),
-    ]
-    drivers.sort(key=lambda x: x[1], reverse=True)
-    primary_driver = drivers[0][0]
+    synoptic_risk = (abs(feat.mean_sea_level_pressure - 1012.0) / 10.0) * 3.2
 
     # Attribution breakdown for the 13 features
     contributions: List[FeatureContribution] = [
@@ -332,4 +294,5 @@ def predict_bust_risk(feat: WeatherFeatures, threshold: float = 40.0) -> Predict
         primary_failure_driver=primary_driver,
         summary_explanation=explanation,
         feature_contributions=contributions,
+        model_version="Untitled9-Calibrated-XGBoost",
     )

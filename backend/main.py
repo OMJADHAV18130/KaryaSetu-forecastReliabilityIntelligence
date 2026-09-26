@@ -127,15 +127,38 @@ def get_all_regions_forecast(lead_day: int = Query(5, ge=1, le=10), threshold: f
 @app.get("/api/model/info")
 def get_model_info():
     return {
-        "model_name": "KaryaSetu-NWP-Bust-Detection-v1.4",
-        "description": "Gradient-boosted decision tree ensemble trained on NCMRWF NCUM analysis vs observations",
-        "input_features_count": 13,
-        "input_features": [f.key for f in FEATURE_METADATA],
-        "validation_metrics": {
-            "ROC_AUC": 0.892,
-            "Brier_Score": 0.114,
-            "F1_Bust_Detection": 0.841,
-            "Reliability_ECE": 0.038
+        "model_name": "Untitled9-Calibrated-XGBoost",
+        "algorithm": "XGBClassifier with Sigmoid Probability Calibration",
+        "hyperparameters": {
+            "learning_rate": 0.02,
+            "max_depth": 4,
+            "n_estimators": 200,
+            "subsample": 0.8,
+            "colsample_bytree": 0.9,
+            "min_child_weight": 3,
+            "gamma": 0.1,
+            "reg_alpha": 0.1,
+            "reg_lambda": 2,
+            "scale_pos_weight": 9.0
         },
-        "target": "Forecast Bust Occurrence (>25mm precip displacement or >3°C temp error)"
+        "source_file": "backend/untitled9.py (Untitled9.ipynb)",
+        "validation_metrics": {
+            "Calibrated_ROC_AUC": 0.868,
+            "Calibrated_PR_AUC": 0.392,
+            "Calibrated_Brier_Score": 0.0466
+        },
+        "features": [
+            "total_precipitation_24hr",
+            "2m_temperature",
+            "mean_sea_level_pressure",
+            "10m_u_component_of_wind",
+            "10m_v_component_of_wind",
+            "specific_humidity_850",
+            "geopotential_500",
+            "vertical_velocity_500",
+            "longitude",
+            "latitude",
+            "lead_hours"
+        ]
     }
+
