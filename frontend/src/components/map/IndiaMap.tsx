@@ -122,10 +122,10 @@ function MapController({ points }: { points: ForecastPoint[] }) {
       const lats = points.map((p) => p.latitude);
       const lons = points.map((p) => p.longitude);
       const bounds: [[number, number], [number, number]] = [
-        [Math.min(...lats) - 1.5, Math.min(...lons) - 1.5],
-        [Math.max(...lats) + 1.5, Math.max(...lons) + 1.5],
+        [Math.min(7.0, ...lats) - 0.5, Math.min(68.5, ...lons) - 0.5],
+        [Math.max(36.0, ...lats) + 0.8, Math.max(97.0, ...lons) + 0.5],
       ];
-      map.fitBounds(bounds);
+      map.fitBounds(bounds, { padding: [12, 12] });
     }
   }, [points, map]);
 

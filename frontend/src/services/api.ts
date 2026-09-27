@@ -54,36 +54,34 @@ apiClient.interceptors.response.use(
 // ── Mock Data (same schemas as FastAPI) ───────────────────────────────────────
 
 const MOCK_GRID_DATA = [
+  // Row 1 (8.4375°N)
   { latitude: 8.4375, longitude: 73.125, bust_probability: 0.069629, confidence: 0.930371, confidence_level: 'HIGH', region: 'Lakshadweep Sea / South Arabian Sea' },
   { latitude: 8.4375, longitude: 78.750, bust_probability: 0.059469, confidence: 0.940531, confidence_level: 'HIGH', region: 'Tamil Nadu (Kanyakumari / Gulf of Mannar)' },
   { latitude: 8.4375, longitude: 84.375, bust_probability: 0.078203, confidence: 0.921797, confidence_level: 'HIGH', region: 'South Bay of Bengal (West)' },
   { latitude: 8.4375, longitude: 90.000, bust_probability: 0.077463, confidence: 0.922537, confidence_level: 'HIGH', region: 'South Bay of Bengal (Central)' },
   { latitude: 8.4375, longitude: 95.625, bust_probability: 0.048118, confidence: 0.951882, confidence_level: 'HIGH', region: 'Andaman Sea (Great Nicobar)' },
+
+  // Row 2 (14.0625°N)
   { latitude: 14.0625, longitude: 73.125, bust_probability: 0.118749, confidence: 0.881251, confidence_level: 'HIGH', region: 'Goa / Central Arabian Sea' },
   { latitude: 14.0625, longitude: 78.750, bust_probability: 0.068620, confidence: 0.931380, confidence_level: 'HIGH', region: 'Rayalaseema / South Andhra Interior' },
   { latitude: 14.0625, longitude: 84.375, bust_probability: 0.117328, confidence: 0.882672, confidence_level: 'HIGH', region: 'Central Bay of Bengal (West)' },
   { latitude: 14.0625, longitude: 90.000, bust_probability: 0.147318, confidence: 0.852682, confidence_level: 'HIGH', region: 'Central Bay of Bengal (East)' },
   { latitude: 14.0625, longitude: 95.625, bust_probability: 0.181085, confidence: 0.818915, confidence_level: 'HIGH', region: 'Andaman Sea (North)' },
+
+  // Row 3 (19.6875°N)
   { latitude: 19.6875, longitude: 73.125, bust_probability: 0.213958, confidence: 0.786042, confidence_level: 'HIGH', region: 'Maharashtra / Mumbai Offshore' },
   { latitude: 19.6875, longitude: 78.750, bust_probability: 0.177704, confidence: 0.822296, confidence_level: 'HIGH', region: 'Telangana / Vidarbha Border' },
   { latitude: 19.6875, longitude: 84.375, bust_probability: 0.178160, confidence: 0.821840, confidence_level: 'HIGH', region: 'Odisha Coastal Waters (Puri / Gopalpur)' },
   { latitude: 19.6875, longitude: 90.000, bust_probability: 0.181810, confidence: 0.818190, confidence_level: 'HIGH', region: 'North Bay of Bengal' },
-  { latitude: 19.6875, longitude: 95.625, bust_probability: 0.111779, confidence: 0.888221, confidence_level: 'HIGH', region: 'Arakan / Northeast Bay of Bengal' },
+
+  // Row 4 (25.3125°N)
   { latitude: 25.3125, longitude: 73.125, bust_probability: 0.064330, confidence: 0.935670, confidence_level: 'HIGH', region: 'Rajasthan (Marwar / Pali)' },
   { latitude: 25.3125, longitude: 78.750, bust_probability: 0.144031, confidence: 0.855969, confidence_level: 'HIGH', region: 'Madhya Pradesh / Bundelkhand' },
   { latitude: 25.3125, longitude: 84.375, bust_probability: 0.148554, confidence: 0.851446, confidence_level: 'HIGH', region: 'Bihar (Gangetic Plains / Patna)' },
   { latitude: 25.3125, longitude: 90.000, bust_probability: 0.155342, confidence: 0.844658, confidence_level: 'HIGH', region: 'Meghalaya / Garo Hills Frontier' },
-  { latitude: 25.3125, longitude: 95.625, bust_probability: 0.095801, confidence: 0.904199, confidence_level: 'HIGH', region: 'Nagaland / Manipur Border' },
-  { latitude: 30.9375, longitude: 73.125, bust_probability: 0.011505, confidence: 0.988495, confidence_level: 'HIGH', region: 'Punjab Frontier (Fazilka / Firozpur)' },
+
+  // Row 5 (30.9375°N)
   { latitude: 30.9375, longitude: 78.750, bust_probability: 0.009464, confidence: 0.990536, confidence_level: 'HIGH', region: 'Uttarakhand Himalayas (Tehri / Garhwal)' },
-  { latitude: 30.9375, longitude: 84.375, bust_probability: 0.008140, confidence: 0.991860, confidence_level: 'HIGH', region: 'Trans-Himalayan Plateau (West)' },
-  { latitude: 30.9375, longitude: 90.000, bust_probability: 0.008024, confidence: 0.991976, confidence_level: 'HIGH', region: 'Trans-Himalayan Plateau (Central)' },
-  { latitude: 30.9375, longitude: 95.625, bust_probability: 0.011326, confidence: 0.988674, confidence_level: 'HIGH', region: 'Eastern Himalayas / Arunachal Frontier' },
-  { latitude: 36.5625, longitude: 73.125, bust_probability: 0.007710, confidence: 0.992290, confidence_level: 'HIGH', region: 'Karakoram (Gilgit-Baltistan)' },
-  { latitude: 36.5625, longitude: 78.750, bust_probability: 0.007766, confidence: 0.992234, confidence_level: 'HIGH', region: 'Karakoram / Northern Ladakh' },
-  { latitude: 36.5625, longitude: 84.375, bust_probability: 0.007761, confidence: 0.992239, confidence_level: 'HIGH', region: 'Northern Kunlun Range' },
-  { latitude: 36.5625, longitude: 90.000, bust_probability: 0.007784, confidence: 0.992216, confidence_level: 'HIGH', region: 'Qaidam Plateau Frontier' },
-  { latitude: 36.5625, longitude: 95.625, bust_probability: 0.007850, confidence: 0.992150, confidence_level: 'HIGH', region: 'Northeast Tibetan Highlands' },
 ];
 
 function getMockMapData(day: number): ForecastMapResponse {
