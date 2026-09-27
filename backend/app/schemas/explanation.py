@@ -24,5 +24,7 @@ class LocalExplanationResponse(BaseModel):
 
 class GlobalExplanationResponse(BaseModel):
     """Response for global feature importance."""
+    model_config = {"protected_namespaces": ()}
+
     features: List[ShapFeature]
     model_version: str

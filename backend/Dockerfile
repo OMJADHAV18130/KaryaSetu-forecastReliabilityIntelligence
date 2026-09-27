@@ -10,13 +10,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (libgomp1 for XGBoost/OpenMP, curl for container health check)
+# Install system dependencies:
+# - build-essential: provides g++ and gcc to compile C++ extensions (needed by SHAP)
+# - libgomp1: OpenMP runtime for XGBoost / scikit-learn
+# - curl: for container healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     libgomp1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first for caching efficiency
+# Install Python dependencies first for layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt

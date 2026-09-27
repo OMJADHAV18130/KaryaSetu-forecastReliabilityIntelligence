@@ -8,6 +8,8 @@ from typing import Optional, Dict, Any, List
 
 class ModelPerformance(BaseModel):
     """Model performance metrics."""
+    model_config = {"protected_namespaces": ()}
+
     model_name: str = "Forecast Bust Detector"
     model_type: str = "XGBoost + Sigmoid Calibration"
     test_period: str = "September 2019"

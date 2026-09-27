@@ -31,6 +31,8 @@ class PredictionRequest(BaseModel):
 
 class PredictionResponse(BaseModel):
     """Prediction response with calibrated probability and confidence."""
+    model_config = {"protected_namespaces": ()}
+
     bust_probability: float = Field(..., description="Calibrated bust probability (0-1)")
     confidence: float = Field(..., description="Forecast confidence (0-1)")
     confidence_level: Literal["HIGH", "MODERATE", "LOW"] = Field(..., description="Confidence level")
