@@ -23,9 +23,17 @@ SHAP_BACKGROUND_PATH = os.getenv("SHAP_BACKGROUND_PATH", str(BASE_DIR / "models"
 FEATURE_SCHEMA_PATH = os.getenv("FEATURE_SCHEMA_PATH", str(BASE_DIR / "models" / "feature_schema.json"))
 
 # CORS Configuration from Environment
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000")
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173",
+)
 CORS_ORIGIN_LIST = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+# Allow all Vercel deployments by default, or customize via CORS_ORIGIN_REGEX
+CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", r"^https:\/\/.*\.vercel\.app$")
+# If wildcard is used, Starlette / browser CORS forbids allow_credentials=True
 CORS_ALLOW_CREDENTIALS = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() in ("true", "1", "yes")
+if "*" in CORS_ORIGIN_LIST:
+    CORS_ALLOW_CREDENTIALS = False
 CORS_ALLOW_METHODS = os.getenv("CORS_ALLOW_METHODS", "*")
 CORS_ALLOW_METHODS_LIST = ["*"] if CORS_ALLOW_METHODS.strip() == "*" else [m.strip() for m in CORS_ALLOW_METHODS.split(",") if m.strip()]
 CORS_ALLOW_HEADERS = os.getenv("CORS_ALLOW_HEADERS", "*")

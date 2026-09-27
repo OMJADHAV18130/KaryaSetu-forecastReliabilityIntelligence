@@ -16,6 +16,7 @@ from .core.config import (
     API_VERSION,
     API_DESCRIPTION,
     CORS_ORIGIN_LIST,
+    CORS_ORIGIN_REGEX,
     CORS_ALLOW_CREDENTIALS,
     CORS_ALLOW_METHODS_LIST,
     CORS_ALLOW_HEADERS_LIST,
@@ -42,13 +43,16 @@ app = FastAPI(
 )
 
 # CORS configuration from environment
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGIN_LIST,
-    allow_credentials=CORS_ALLOW_CREDENTIALS,
-    allow_methods=CORS_ALLOW_METHODS_LIST,
-    allow_headers=CORS_ALLOW_HEADERS_LIST,
-)
+cors_kwargs = {
+    "allow_origins": CORS_ORIGIN_LIST,
+    "allow_credentials": CORS_ALLOW_CREDENTIALS,
+    "allow_methods": CORS_ALLOW_METHODS_LIST,
+    "allow_headers": CORS_ALLOW_HEADERS_LIST,
+}
+if CORS_ORIGIN_REGEX:
+    cors_kwargs["allow_origin_regex"] = CORS_ORIGIN_REGEX
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 # Include routers
 app.include_router(health.router)

@@ -21,15 +21,35 @@ import type {
 } from '../types';
 
 const API_MODE = import.meta.env.VITE_API_MODE || 'live';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// Strip trailing slash to prevent double slashes in routes
+const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '');
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 75000, // 75s to tolerate Render free-tier cold starts (~50s)
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Helpful logging for diagnosing deployment issues
+apiClient.interceptors.request.use((config) => {
+  return config;
+});
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const fullUrl = `${error.config?.baseURL || ''}${error.config?.url || ''}`;
+    console.error(
+      `[KaryaSetu API Error] ${error.config?.method?.toUpperCase()} ${fullUrl}:`,
+      error.message,
+      error.response?.status ? `(Status: ${error.response.status})` : ''
+    );
+    return Promise.reject(error);
+  }
+);
 
 // ── Mock Data (same schemas as FastAPI) ───────────────────────────────────────
 
