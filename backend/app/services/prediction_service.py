@@ -65,6 +65,8 @@ class PredictionService:
                 "latitude": profile["lat"],
                 "lead_hours": lead_hours,
             }
+            if "bust_pattern_similarity" in profile:
+                features["bust_pattern_similarity"] = profile["bust_pattern_similarity"]
 
             result = predictor.predict(features)
             result["region"] = profile.get("region", "")
@@ -77,6 +79,7 @@ class PredictionService:
                 "specific_humidity_850": profile["q850"],
                 "geopotential_500": profile["z500"],
                 "vertical_velocity_500": profile["w500"],
+                "bust_pattern_similarity": profile.get("bust_pattern_similarity", 0.35),
                 "lead_hours": lead_hours,
             }
             results.append(result)

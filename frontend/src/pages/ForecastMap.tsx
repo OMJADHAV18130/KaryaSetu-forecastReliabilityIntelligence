@@ -37,7 +37,7 @@ export default function ForecastMap() {
       </div>
 
       {isLoading ? (
-        <div className="h-[600px] bg-surface-800 rounded-lg border border-surface-700 flex items-center justify-center">
+        <div className="h-[calc(100vh-230px)] min-h-[700px] bg-surface-800 rounded-lg border border-surface-700 flex items-center justify-center">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             <p className="text-sm text-slate-400">Loading forecast data...</p>
@@ -49,7 +49,7 @@ export default function ForecastMap() {
           layer={layer}
           selectedPoint={selectedPoint}
           onPointClick={handlePointClick}
-          height="600px"
+          height="calc(100vh - 230px)"
         />
       )}
 

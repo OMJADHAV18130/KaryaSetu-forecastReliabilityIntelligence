@@ -7,7 +7,6 @@ import BustDetection from './pages/BustDetection';
 import Verification from './pages/Verification';
 import HistoricalEvents from './pages/HistoricalEvents';
 import Explainability from './pages/Explainability';
-import ModelPerformance from './pages/ModelPerformance';
 import Settings from './pages/Settings';
 
 const queryClient = new QueryClient({
@@ -31,7 +30,6 @@ export default function App() {
             <Route path="/verification" element={<Verification />} />
             <Route path="/historical" element={<HistoricalEvents />} />
             <Route path="/explainability" element={<Explainability />} />
-            <Route path="/model-performance" element={<ModelPerformance />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

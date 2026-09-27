@@ -93,7 +93,7 @@ export default function Overview() {
       {/* Map (Hover over any area to show trained data latitude & longitude wise) */}
       <div className="mb-6">
         {mapLoading ? (
-          <div className="h-[500px] bg-surface-800 rounded-lg border border-surface-700 flex items-center justify-center">
+          <div className="h-[680px] bg-surface-800 rounded-lg border border-surface-700 flex items-center justify-center">
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
               <p className="text-sm text-slate-400">Loading trained forecast grid...</p>
@@ -106,7 +106,7 @@ export default function Overview() {
             selectedPoint={activePoint}
             onPointHover={setHoveredPoint}
             onPointClick={handlePointClick}
-            height="500px"
+            height="680px"
           />
         )}
       </div>

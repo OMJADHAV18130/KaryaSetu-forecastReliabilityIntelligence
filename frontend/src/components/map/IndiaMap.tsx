@@ -122,12 +122,34 @@ function MapController({ points }: { points: ForecastPoint[] }) {
       const lats = points.map((p) => p.latitude);
       const lons = points.map((p) => p.longitude);
       const bounds: [[number, number], [number, number]] = [
-        [Math.min(...lats) - 2.0, Math.min(...lons) - 2.0],
-        [Math.max(...lats) + 2.0, Math.max(...lons) + 2.0],
+        [Math.min(...lats) - 1.5, Math.min(...lons) - 1.5],
+        [Math.max(...lats) + 1.5, Math.max(...lons) + 1.5],
       ];
       map.fitBounds(bounds);
     }
   }, [points, map]);
+
+  // Handle dynamic container resize (e.g. sidebar toggle or window resize)
+  useEffect(() => {
+    const container = map.getContainer();
+    if (!container) return;
+
+    let resizeTimer: any;
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize();
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        map.invalidateSize();
+      }, 320);
+    });
+
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+      clearTimeout(resizeTimer);
+    };
+  }, [map]);
 
   return null;
 }
