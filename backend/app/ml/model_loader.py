@@ -20,6 +20,10 @@ from ..core.config import (
     FEATURE_SCHEMA_PATH,
 )
 
+# Ensure scikit-learn 1.6+ compatibility with XGBoost
+if not hasattr(xgb.XGBClassifier, "_estimator_type"):
+    xgb.XGBClassifier._estimator_type = "classifier"
+
 logger = logging.getLogger("karyasetu")
 
 
@@ -73,6 +77,8 @@ class ModelLoader:
             if os.path.exists(MODEL_PATH):
                 self.model = xgb.XGBClassifier()
                 self.model.load_model(MODEL_PATH)
+                if not hasattr(self.model, "n_classes_") or self.model.n_classes_ is None:
+                    self.model.n_classes_ = 2
                 self.model_loaded = True
                 logger.info(f"Model loaded from {MODEL_PATH}")
             else:
