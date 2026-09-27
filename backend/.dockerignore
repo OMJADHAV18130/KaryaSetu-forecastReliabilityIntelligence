@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Notebooks and Training Scripts
+*.ipynb
+train_model.py
+test_grid.py
+
+# Tests and docs
+tests/
+
+# Environment and Git
+.env
+.git
+.gitignore
+README.md

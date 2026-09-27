@@ -37,3 +37,33 @@ FastAPI backend serving real-time machine learning predictions for Medium-Range 
    # my_model = joblib.load('backend/model.joblib')
    ```
 3. Pass the 13 feature array into `my_model.predict_proba([[...]])`.
+
+## Docker Deployment
+
+### 1. Build and Run with Docker Compose (Recommended)
+From the project root:
+```bash
+# Build and start container
+docker compose up -d --build
+
+# View logs
+docker compose logs -f backend
+
+# Stop container
+docker compose down
+```
+
+### 2. Build and Run with Docker CLI
+```bash
+# Build the image
+docker build -t karyasetu-backend:latest ./backend
+
+# Run the container with environment variables
+docker run -d \
+  --name karyasetu-backend \
+  -p 8000:8000 \
+  --env-file ./backend/.env \
+  karyasetu-backend:latest
+```
+
+The API will be available at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
