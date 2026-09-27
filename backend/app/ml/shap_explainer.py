@@ -148,6 +148,8 @@ class ShapExplainer:
                 direction = "increases_bust_risk" if val < -0.2 else "decreases_bust_risk"
             elif col == "total_precipitation_24hr":
                 direction = "increases_bust_risk" if val > 0.02 else "decreases_bust_risk"
+            elif col == "bust_pattern_similarity":
+                direction = "increases_bust_risk" if val > 0.65 else "decreases_bust_risk"
             else:
                 direction = "neutral"
             contributions.append({
@@ -164,6 +166,7 @@ class ShapExplainer:
         sample_importance = {
             "lead_hours": 0.38,
             "vertical_velocity_500": 0.32,
+            "bust_pattern_similarity": 0.28,
             "specific_humidity_850": 0.26,
             "total_precipitation_24hr": 0.21,
             "mean_sea_level_pressure": 0.16,

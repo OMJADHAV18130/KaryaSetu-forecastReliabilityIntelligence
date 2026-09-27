@@ -72,6 +72,7 @@ class Predictor:
         # Derive day from lead hours
         lead_hours = feature_vector[10]  # lead_hours is the 11th feature
         day = lead_hours_to_day(lead_hours)
+        bust_sim = feature_vector[11] if len(feature_vector) > 11 else None
 
         return {
             "bust_probability": round(calibrated_prob, 4),
@@ -81,6 +82,7 @@ class Predictor:
             "lead_hours": lead_hours,
             "latitude": feature_vector[9],
             "longitude": feature_vector[8],
+            "bust_pattern_similarity": round(bust_sim, 4) if bust_sim is not None else None,
             "model_version": self.model_version,
             "request_id": request_id,
         }
@@ -102,6 +104,7 @@ class Predictor:
         "temperature_2m": "2m_temperature",
         "u_wind_10m": "10m_u_component_of_wind",
         "v_wind_10m": "10m_v_component_of_wind",
+        "pattern_similarity": "bust_pattern_similarity",
     }
 
     def _extract_features(self, features: Dict[str, Any]) -> list:
@@ -117,7 +120,13 @@ class Predictor:
                         val = features[api_name]
                         break
             if val is None:
-                raise ValueError(f"Missing feature: {col}")
+                if col == "bust_pattern_similarity":
+                    # Derive default similarity from precipitation intensity & lead time if omitted
+                    tp = float(features.get("total_precipitation_24hr", features.get("precipitation", 0.01)))
+                    lead_h = float(features.get("lead_hours", 24.0))
+                    val = float(np.clip(0.42 + min(0.40, tp * 12.0) + (lead_h / 240.0) * 0.12, 0.0, 1.0))
+                else:
+                    raise ValueError(f"Missing feature: {col}")
             val = float(val)
             if math.isnan(val) or math.isinf(val):
                 raise ValueError(f"Invalid value for {col}: {val}")

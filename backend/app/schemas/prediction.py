@@ -19,6 +19,7 @@ class PredictionRequest(BaseModel):
     longitude: float = Field(..., ge=68.0, le=98.0, description="Longitude (°E)")
     latitude: float = Field(..., ge=8.0, le=37.0, description="Latitude (°N)")
     lead_hours: float = Field(..., ge=24.0, le=240.0, description="Lead time (hours)")
+    bust_pattern_similarity: Optional[float] = Field(None, ge=0.0, le=1.0, description="Cosine similarity to bust archetype (0-1). Estimated if omitted.")
 
     @field_validator("*")
     @classmethod
@@ -40,5 +41,6 @@ class PredictionResponse(BaseModel):
     lead_hours: float = Field(..., description="Lead time in hours")
     latitude: float = Field(..., description="Latitude")
     longitude: float = Field(..., description="Longitude")
+    bust_pattern_similarity: Optional[float] = Field(None, description="Bust pattern similarity score (0-1)")
     model_version: Optional[str] = None
     request_id: Optional[str] = None

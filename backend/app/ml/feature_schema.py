@@ -18,6 +18,7 @@ FEATURE_COLUMNS: List[str] = [
     "longitude",
     "latitude",
     "lead_hours",
+    "bust_pattern_similarity",
 ]
 
 # ── Feature metadata for validation and documentation ─────────────────────────
@@ -98,6 +99,13 @@ FEATURE_SCHEMA: Dict[str, Dict[str, Any]] = {
         "min": 24.0,
         "max": 240.0,
         "default": 24.0,
+    },
+    "bust_pattern_similarity": {
+        "description": "Cosine similarity of precipitation trajectory to historical bust archetype",
+        "unit": "similarity (0–1)",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 0.584,
     },
 }
 

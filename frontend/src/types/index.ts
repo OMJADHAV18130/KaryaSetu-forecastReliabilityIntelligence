@@ -36,6 +36,7 @@ export interface Prediction {
   lead_hours: number;
   latitude: number;
   longitude: number;
+  bust_pattern_similarity?: number;
   model_version?: string;
   request_id?: string;
 }
@@ -48,6 +49,7 @@ export interface BustRiskResult {
   bust_probability: number;
   confidence: number;
   confidence_level: string;
+  bust_pattern_similarity?: number;
   region?: string;
   model_inputs?: Record<string, number>;
 }
@@ -110,6 +112,11 @@ export interface ModelPerformance {
   roc_auc: number;
   pr_auc: number;
   mcc: number;
+  mcc_optimal?: number;
+  optimal_threshold?: number;
+  precision?: number;
+  recall?: number;
+  f1?: number;
   accuracy: number;
   brier_raw: number;
   brier_calibrated: number;
