@@ -1,7 +1,7 @@
 import { Settings as SettingsIcon, Database, Code, Info } from 'lucide-react';
 
 export default function Settings() {
-  const apiMode = import.meta.env.VITE_API_MODE || 'mock';
+  const apiMode = import.meta.env.VITE_API_MODE || 'live';
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
   return (

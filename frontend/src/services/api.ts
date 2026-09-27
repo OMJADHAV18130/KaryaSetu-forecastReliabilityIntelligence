@@ -1,6 +1,6 @@
 /**
  * Centralized API client for the KaryaSetu backend.
- * Uses VITE_API_BASE_URL and VITE_API_MODE environment variables.
+ * Uses VITE_API_BASE_URL and VITE_API_MODE environment variables for deployment.
  * Supports mock mode for development without backend.
  */
 
@@ -20,7 +20,7 @@ import type {
   HistoricalEventsResponse,
 } from '../types';
 
-const API_MODE = import.meta.env.VITE_API_MODE || 'mock';
+const API_MODE = import.meta.env.VITE_API_MODE || 'live';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 const apiClient = axios.create({

@@ -16,6 +16,9 @@ from .core.config import (
     API_VERSION,
     API_DESCRIPTION,
     CORS_ORIGIN_LIST,
+    CORS_ALLOW_CREDENTIALS,
+    CORS_ALLOW_METHODS_LIST,
+    CORS_ALLOW_HEADERS_LIST,
     ENVIRONMENT,
     DEBUG,
     LOG_LEVEL,
@@ -38,13 +41,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS configuration
+# CORS configuration from environment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGIN_LIST,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
+    allow_methods=CORS_ALLOW_METHODS_LIST,
+    allow_headers=CORS_ALLOW_HEADERS_LIST,
 )
 
 # Include routers

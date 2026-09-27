@@ -4,16 +4,32 @@ Application configuration loaded from environment variables.
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Explicitly load .env from the backend root directory
+load_dotenv(dotenv_path=BASE_DIR / ".env")
+
+# Server Configuration
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = int(os.getenv("PORT", "8000"))
+API_PREFIX = os.getenv("API_PREFIX", "/api")
+
+# Model and Data Paths
 MODEL_PATH = os.getenv("MODEL_PATH", str(BASE_DIR / "models" / "xgboost_model" / "model.json"))
 CALIBRATOR_PATH = os.getenv("CALIBRATOR_PATH", str(BASE_DIR / "models" / "calibration" / "calibrator.joblib"))
 SHAP_BACKGROUND_PATH = os.getenv("SHAP_BACKGROUND_PATH", str(BASE_DIR / "models" / "shap" / "background_data.joblib"))
 FEATURE_SCHEMA_PATH = os.getenv("FEATURE_SCHEMA_PATH", str(BASE_DIR / "models" / "feature_schema.json"))
 
+# CORS Configuration from Environment
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000")
-CORS_ORIGIN_LIST = [o.strip() for o in CORS_ORIGINS.split(",")]
+CORS_ORIGIN_LIST = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+CORS_ALLOW_CREDENTIALS = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() in ("true", "1", "yes")
+CORS_ALLOW_METHODS = os.getenv("CORS_ALLOW_METHODS", "*")
+CORS_ALLOW_METHODS_LIST = ["*"] if CORS_ALLOW_METHODS.strip() == "*" else [m.strip() for m in CORS_ALLOW_METHODS.split(",") if m.strip()]
+CORS_ALLOW_HEADERS = os.getenv("CORS_ALLOW_HEADERS", "*")
+CORS_ALLOW_HEADERS_LIST = ["*"] if CORS_ALLOW_HEADERS.strip() == "*" else [h.strip() for h in CORS_ALLOW_HEADERS.split(",") if h.strip()]
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "research")
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
