@@ -59,47 +59,69 @@ The app runs at `http://localhost:5173` (or the next available port).
 ```
 src/
 ├── components/
-│   ├── Navbar.jsx
-│   ├── Sidebar.jsx
-│   ├── RiskCard.jsx
-│   ├── ForecastMap.jsx
-│   ├── ConfidenceLegend.jsx
-│   ├── RegionDrawer.jsx
-│   ├── RiskTimeline.jsx
-│   ├── RegionRiskTable.jsx
-│   ├── ExplanationPanel.jsx
-│   ├── ForecastComparison.jsx
-│   ├── FeatureImportanceChart.jsx
-│   ├── HistoricalEventCard.jsx
-│   ├── FilterBar.jsx
-│   ├── StatusBadge.jsx
-│   ├── LoadingState.jsx
-│   └── ErrorState.jsx
+│   ├── layout/
+│   │   ├── Layout.tsx
+│   │   └── Sidebar.tsx
+│   └── map/
+│       ├── IndiaMap.tsx          # shared map: both views, boundary corrector active
+│       ├── DistrictRiskMap.tsx   # district bust-risk choropleth layer
+│       ├── RiskLegend.tsx        # gradient scale + extreme-district ranking
+│       ├── MapControls.tsx       # day selector + layer selector
+│       └── LocationDrawer.tsx    # point/district detail drawer
 ├── pages/
-│   ├── Dashboard.jsx
-│   ├── ForecastMapPage.jsx
-│   ├── BustDetection.jsx
-│   ├── Verification.jsx
-│   ├── AIExplanation.jsx
-│   ├── HistoricalEvents.jsx
-│   ├── ModelPerformance.jsx
-│   └── Settings.jsx
+│   ├── Overview.tsx
+│   ├── ForecastMap.tsx
+│   ├── BustDetection.tsx
+│   ├── Verification.tsx
+│   ├── Explainability.tsx
+│   ├── HistoricalEvents.tsx
+│   ├── ModelPerformance.tsx
+│   └── Settings.tsx
+├── lib/
+│   └── riskScale.ts              # colour ramps + HIGH/MODERATE/LOW thresholds
 ├── data/
-│   ├── mockRegions.js
-│   ├── mockHistoricalEvents.js
-│   ├── mockExplanations.js
-│   ├── mockModelPerformance.js
-│   └── mockVerification.js
+│   ├── indianDistricts.ts        # district list + IDW interpolation helper
+│   └── mock*.ts                  # offline demo payloads
 ├── services/
-│   └── api.js
+│   └── api.ts                    # centralised client, mock/live switch
 ├── hooks/
-│   └── useForecast.js
-├── App.jsx
-├── main.jsx
+│   └── index.ts
+├── types/
+│   └── index.ts
+├── App.tsx
+├── main.tsx
 └── index.css
 public/
-└── geojson/
-    └── india-states.geojson
+├── geojson/
+│   ├── india-states.geojson      # sovereign boundary overlay
+│   └── india-districts.geojson   # district choropleth boundaries
+└── india_boundary_corrections.pmtiles
+scripts/
+└── build-district-geojson.mjs    # regenerates india-districts.geojson
+```
+
+---
+
+## Map Views
+
+The map's top bar has a **Grid Map / Bust Risk Map** toggle.
+
+- **Grid Map** (default, unchanged) — trained 5.625° grid anchors, district station
+  pins, optional coarse grid bounds, and hover/click inspection anywhere.
+- **Bust Risk Map** — a choropleth of all 755 Census 2011 districts coloured by the
+  continuous bust-probability / confidence scale, with a threshold legend, the
+  extreme-district ranking, and adaptive district labels (top extremes at country
+  zoom, every visible district from zoom 6).
+
+Both views keep the **Indian Boundary Corrector** tile layer and the **Survey of
+India** boundary overlay active, and the boundary overlay always draws above the
+district fills. District values are inverse-distance interpolations of the trained
+grid — not per-district model runs.
+
+Regenerate the district boundaries from the upstream file with:
+
+```bash
+npm run build:districts -- <source.geojson> [tolerance]
 ```
 
 ---
@@ -107,7 +129,7 @@ public/
 ## Switching to FastAPI Backend
 
 1. Start your FastAPI backend at `http://localhost:8000`
-2. Open `src/services/api.js` and change `const USE_MOCK = false`
+2. Set `VITE_API_MODE=live` in `.env` (and `VITE_API_BASE_URL` if it differs)
 3. Implement these endpoints:
 
 | Endpoint | Description |

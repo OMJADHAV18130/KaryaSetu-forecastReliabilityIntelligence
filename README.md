@@ -38,6 +38,40 @@ React Operational Dashboard
 4. **Explainable Output** — SHAP-based model feature contributions
 5. **Prototype Dashboard/API** — React + FastAPI operational-style prototype
 
+### Map Views
+
+The India map carries a **view toggle in the map's top bar** — the default view is
+unchanged, and the risk map is an additional layer on top of the same map:
+
+| View | Contents |
+| --- | --- |
+| **Grid Map** (default) | The 30 trained 5.625° model-grid anchors, the major district station pins, the optional coarse grid-cell bounds, and free hover/click inspection at any coordinate. |
+| **Bust Risk Map** | A district-level choropleth of all 755 Census 2011 districts, filled with the continuous bust-probability / confidence colour scale, with a threshold legend, the highest-bust-risk (or lowest-confidence) district ranking, and hover/click inspection. |
+
+Both views share the same `MapContainer`, so in **both** of them:
+
+- the **Indian Boundary Corrector** corrected tile layer stays active,
+- the **Survey of India sovereign boundary** vector overlay stays active and renders
+  *above* the district fills (custom Leaflet pane `districtRisk`, z-index 350, below
+  the default overlay pane at 400),
+- the day selector, layer selector, location drawer and inspection HUD behave the same.
+
+Only the basemap imagery is dimmed (CSS filter) while the choropleth is on screen so
+the colour fills read clearly; the boundary corrections themselves are untouched.
+
+District shading is **inverse-distance interpolation of the trained grid**, not a
+per-district model run — the legend states this explicitly on the map.
+
+Assets and helper:
+
+- `frontend/public/geojson/india-districts.geojson` — committed, simplified district
+  boundaries (Census of India 2011; follows the official Indian claim for
+  J&K / Ladakh / Arunachal Pradesh).
+- `frontend/scripts/build-district-geojson.mjs` — regenerates the above from the
+  upstream boundary file (`npm run build:districts -- <source.geojson> [tolerance]`).
+- `frontend/src/lib/riskScale.ts` — shared colour ramp and the
+  HIGH ≥ 0.70 / MODERATE ≥ 0.40 / LOW < 0.40 thresholds.
+
 ## Architecture
 
 ```

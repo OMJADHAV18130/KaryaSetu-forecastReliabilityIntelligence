@@ -2,16 +2,37 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { MapContainer, CircleMarker, Rectangle, Tooltip, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { extendLeaflet } from '@india-boundary-corrector/leaflet-layer';
-import { Layers, Eye, EyeOff, MapPin, Compass, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import {
+  Layers,
+  Eye,
+  EyeOff,
+  MapPin,
+  Compass,
+  ShieldAlert,
+  CheckCircle2,
+  MapPinned,
+  Flame,
+  Tag,
+} from 'lucide-react';
 import type { ForecastPoint } from '../../types';
 import { INDIAN_DISTRICTS, interpolateReliability } from '../../data/indianDistricts';
+import DistrictRiskMap, { DISTRICT_PANE, type DistrictRisk } from './DistrictRiskMap';
+import RiskLegend from './RiskLegend';
+import type { ReliabilityLayer } from '../../lib/riskScale';
+
+export type MapView = 'markers' | 'risk';
 
 interface IndiaMapProps {
   points: ForecastPoint[];
-  layer: 'bust_probability' | 'confidence';
+  layer: ReliabilityLayer;
   selectedPoint?: ForecastPoint | null;
   onPointClick?: (point: ForecastPoint) => void;
   onPointHover?: (point: ForecastPoint | null) => void;
+  /** Optional controlled view. Defaults to the internal 'markers' state. */
+  view?: MapView;
+  onViewChange?: (view: MapView) => void;
+  /** Lead day (1-10) shown on the risk legend. */
+  day?: number;
   height?: string;
 }
 
@@ -58,6 +79,47 @@ function IndiaBoundaryCorrectedTileLayer({
       }
     };
   }, [map, url, attribution]);
+
+  return null;
+}
+
+/**
+ * Map-level pane registry. Panes belong to the map (not to the toggled layer),
+ * so the district-fill pane is created once and outlives every view toggle.
+ */
+function MapPanes() {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map.getPane(DISTRICT_PANE)) {
+      map.createPane(DISTRICT_PANE);
+      const pane = map.getPane(DISTRICT_PANE);
+      if (pane) {
+        // 350 sits between the tile pane (200) and the default overlay pane (400),
+        // so the Survey of India sovereign boundary stays on top of the fills.
+        pane.style.zIndex = '350';
+        pane.style.pointerEvents = 'auto';
+      }
+    }
+  }, [map]);
+
+  return null;
+}
+
+/**
+ * Dims the basemap imagery when the district choropleth is on top of it. The
+ * Indian Boundary Corrector corrections themselves stay fully active.
+ */
+function BasemapDimmer({ dim }: { dim: boolean }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    container.classList.toggle('map-risk-view', dim);
+    return () => {
+      container.classList.remove('map-risk-view');
+    };
+  }, [map, dim]);
 
   return null;
 }
@@ -172,16 +234,30 @@ export default function IndiaMap({
   selectedPoint,
   onPointClick,
   onPointHover,
+  view: controlledView,
+  onViewChange,
+  day = 1,
   height = '520px',
 }: IndiaMapProps) {
   const mapRef = useRef(null);
+  const [internalView, setInternalView] = useState<MapView>('markers');
+  const view = controlledView ?? internalView;
+  const isRiskView = view === 'risk';
+
   const [showGridBoxes, setShowGridBoxes] = useState(false);
   const [showDistrictMarkers, setShowDistrictMarkers] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
+  const [riskRanking, setRiskRanking] = useState<DistrictRisk[]>([]);
   const [liveHoveredPoint, setLiveHoveredPoint] = useState<ForecastPoint | null>(null);
   const [boundaryGeoJson, setBoundaryGeoJson] = useState<any | null>(null);
 
   const halfLat = 2.8125;
   const halfLon = 2.8125;
+
+  const setView = (next: MapView) => {
+    setInternalView(next);
+    onViewChange?.(next);
+  };
 
   // Load official Survey of India boundary GeoJSON
   useEffect(() => {
@@ -214,38 +290,54 @@ export default function IndiaMap({
 
   return (
     <div style={{ height }} className="rounded-xl overflow-hidden border border-surface-700 relative shadow-2xl bg-[#0b1329]">
-      {/* ── Top Bar Controls: Compliance Badge & Grid Toggle ── */}
+      {/* ── Top Bar Controls: View Toggle, Compliance Badge & Grid Toggle ── */}
       <div className="absolute top-3 left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none">
-        {/* Toggle Button for Grid Boxes & Districts */}
+        {/* View toggle: original station/grid map <-> district bust-risk map */}
         <div className="flex items-center gap-2 pointer-events-auto">
-          <button
-            onClick={() => setShowGridBoxes((prev) => !prev)}
-            type="button"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border shadow-md transition-all ${
-              showGridBoxes
-                ? 'bg-blue-600/90 text-white border-blue-400 shadow-blue-500/20'
-                : 'bg-slate-900/90 text-slate-300 border-surface-600 hover:bg-slate-800 hover:text-white'
-            }`}
-            title="Toggle the 5.625° ERA5 coarse training grid cells"
-          >
-            <Layers className="w-3.5 h-3.5 text-blue-400" />
-            <span>{showGridBoxes ? 'Hide 5.6° Grid Bounds' : 'Show 5.6° Grid Bounds'}</span>
-            {showGridBoxes ? <Eye className="w-3 h-3 ml-0.5 text-blue-200" /> : <EyeOff className="w-3 h-3 ml-0.5 text-slate-400" />}
-          </button>
+          <div className="flex items-center p-0.5 rounded-lg bg-slate-900/90 border border-surface-600 shadow-md">
+            <button
+              type="button"
+              onClick={() => setView('markers')}
+              title="Original trained grid point and district station map"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-[7px] text-xs font-semibold tracking-wide transition-all ${
+                !isRiskView
+                  ? 'bg-sky-600 text-white shadow-sky-500/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <MapPinned className="w-3.5 h-3.5" />
+              <span>Grid Map</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('risk')}
+              title="District-level bust probability / confidence choropleth"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-[7px] text-xs font-semibold tracking-wide transition-all ${
+                isRiskView
+                  ? 'bg-rose-600 text-white shadow-rose-500/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Bust Risk Map</span>
+            </button>
+          </div>
 
-          <button
-            onClick={() => setShowDistrictMarkers((prev) => !prev)}
-            type="button"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border shadow-md transition-all ${
-              showDistrictMarkers
-                ? 'bg-emerald-600/90 text-white border-emerald-400 shadow-emerald-500/20'
-                : 'bg-slate-900/90 text-slate-300 border-surface-600 hover:bg-slate-800 hover:text-white'
-            }`}
-            title="Toggle major Indian meteorological districts"
-          >
-            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{showDistrictMarkers ? 'Districts Active' : 'Districts Hidden'}</span>
-          </button>
+          {isRiskView && (
+            <button
+              onClick={() => setShowLabels((prev) => !prev)}
+              type="button"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border shadow-md transition-all ${
+                showLabels
+                  ? 'bg-violet-600/90 text-white border-violet-400 shadow-violet-500/20'
+                  : 'bg-slate-900/90 text-slate-300 border-surface-600 hover:bg-slate-800 hover:text-white'
+              }`}
+              title="Show district name labels and values"
+            >
+              <Tag className="w-3.5 h-3.5 text-violet-300" />
+              <span>{showLabels ? 'Labels On' : 'Labels Off'}</span>
+            </button>
+          )}
         </div>
 
         {/* Survey of India Compliance Badge */}
@@ -256,6 +348,42 @@ export default function IndiaMap({
           </span>
         </div>
       </div>
+
+      {/* ── Secondary Controls (original marker map only) ── */}
+      {!isRiskView && (
+        <div className="absolute top-14 left-3 z-[1000] flex items-center gap-2 pointer-events-none">
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              onClick={() => setShowGridBoxes((prev) => !prev)}
+              type="button"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border shadow-md transition-all ${
+                showGridBoxes
+                  ? 'bg-blue-600/90 text-white border-blue-400 shadow-blue-500/20'
+                  : 'bg-slate-900/90 text-slate-300 border-surface-600 hover:bg-slate-800 hover:text-white'
+              }`}
+              title="Toggle the 5.625° ERA5 coarse training grid cells"
+            >
+              <Layers className="w-3.5 h-3.5 text-blue-400" />
+              <span>{showGridBoxes ? 'Hide 5.6° Grid Bounds' : 'Show 5.6° Grid Bounds'}</span>
+              {showGridBoxes ? <Eye className="w-3 h-3 ml-0.5 text-blue-200" /> : <EyeOff className="w-3 h-3 ml-0.5 text-slate-400" />}
+            </button>
+
+            <button
+              onClick={() => setShowDistrictMarkers((prev) => !prev)}
+              type="button"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border shadow-md transition-all ${
+                showDistrictMarkers
+                  ? 'bg-emerald-600/90 text-white border-emerald-400 shadow-emerald-500/20'
+                  : 'bg-slate-900/90 text-slate-300 border-surface-600 hover:bg-slate-800 hover:text-white'
+              }`}
+              title="Toggle major Indian meteorological districts"
+            >
+              <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{showDistrictMarkers ? 'Districts Active' : 'Districts Hidden'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Bottom-Left Floating Live Location & District HUD ── */}
       {activeInspection && (
@@ -301,7 +429,11 @@ export default function IndiaMap({
             </div>
           </div>
           <div className="mt-1.5 text-[9.5px] text-slate-400 text-center flex items-center justify-center gap-1">
-            <span>Hover anywhere across India to inspect localized reliability</span>
+            <span>
+              {isRiskView
+                ? 'Hover any district to inspect · click to open the detail drawer'
+                : 'Hover anywhere across India to inspect localized reliability'}
+            </span>
           </div>
         </div>
       )}
@@ -315,11 +447,30 @@ export default function IndiaMap({
         zoomControl={true}
         scrollWheelZoom={true}
       >
-        {/* Corrected Tile Layer with Indian Boundary Corrector */}
+        {/* Corrected Tile Layer with Indian Boundary Corrector (active in BOTH views) */}
         <IndiaBoundaryCorrectedTileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Boundary: Survey of India'
         />
+
+        {/* Pane registry (district fills render below the sovereign boundary) */}
+        <MapPanes />
+
+        {/* Dims the imagery only when the district choropleth is on top of it */}
+        <BasemapDimmer dim={isRiskView} />
+
+        {/* District-level bust risk choropleth (rendered below the sovereign boundary) */}
+        {isRiskView && (
+          <DistrictRiskMap
+            points={points}
+            layer={layer}
+            selectedPoint={selectedPoint ?? null}
+            showLabels={showLabels}
+            onDistrictHover={handleLiveHover}
+            onDistrictClick={handleLiveClick}
+            onRiskRanking={setRiskRanking}
+          />
+        )}
 
         {/* Official Survey of India Sovereign Boundary Vector Layer */}
         {boundaryGeoJson && (
@@ -339,14 +490,17 @@ export default function IndiaMap({
         <MapController points={points} />
 
         {/* Global Mouse Tracker for continuous hovering across any point in India */}
-        <MapHoverListener
-          points={points}
-          onHover={handleLiveHover}
-          onClick={handleLiveClick}
-        />
+        {!isRiskView && (
+          <MapHoverListener
+            points={points}
+            onHover={handleLiveHover}
+            onClick={handleLiveClick}
+          />
+        )}
 
         {/* ── Optional Toggle: Coarse 5.625° Grid Bounding Boxes ─────────────── */}
-        {showGridBoxes &&
+        {!isRiskView &&
+          showGridBoxes &&
           points.map((point, idx) => {
             const value = layer === 'confidence' ? point.confidence : point.bust_probability;
             const color = getColor(value, layer);
@@ -378,7 +532,8 @@ export default function IndiaMap({
           })}
 
         {/* ── Major Indian Meteorological District / Station Pins ────────────── */}
-        {showDistrictMarkers &&
+        {!isRiskView &&
+          showDistrictMarkers &&
           INDIAN_DISTRICTS.map((district) => {
             const interp = interpolateReliability(district.latitude, district.longitude, points);
             const value = layer === 'confidence' ? interp.confidence : interp.bust_probability;
@@ -428,7 +583,8 @@ export default function IndiaMap({
           })}
 
         {/* ── Trained Grid Anchor Points ────────────────────────────────────── */}
-        {points.map((point, idx) => {
+        {!isRiskView &&
+          points.map((point, idx) => {
           const value = layer === 'confidence' ? point.confidence : point.bust_probability;
           const color = getColor(value, layer);
           const isSelected =
@@ -453,6 +609,25 @@ export default function IndiaMap({
           );
         })}
       </MapContainer>
+
+      {/* ── Risk Map Legend & Extreme Districts ── */}
+      {isRiskView && (
+        <RiskLegend
+          layer={layer}
+          day={day}
+          ranking={riskRanking}
+          onSelect={(risk) =>
+            handleLiveClick({
+              latitude: risk.latitude,
+              longitude: risk.longitude,
+              bust_probability: risk.bust_probability,
+              confidence: risk.confidence,
+              confidence_level: risk.level,
+              region: `${risk.district} District, ${risk.state}`,
+            })
+          }
+        />
+      )}
     </div>
   );
 }

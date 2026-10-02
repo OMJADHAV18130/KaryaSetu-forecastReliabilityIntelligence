@@ -49,6 +49,7 @@ export default function ForecastMap() {
           layer={layer}
           selectedPoint={selectedPoint}
           onPointClick={handlePointClick}
+          day={selectedDay}
           height="calc(100vh - 230px)"
         />
       )}

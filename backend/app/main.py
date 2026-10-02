@@ -7,6 +7,7 @@ Research prototype using XGBoost with sigmoid calibration.
 This is NOT an operational NCMRWF system. All metrics are research test-set results.
 """
 
+from .core import compat
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

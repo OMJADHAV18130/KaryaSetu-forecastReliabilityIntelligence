@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+from ..core import compat
+
 import joblib
 import numpy as np
 import xgboost as xgb

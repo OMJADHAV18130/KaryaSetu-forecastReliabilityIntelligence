@@ -106,6 +106,7 @@ export default function Overview() {
             selectedPoint={activePoint}
             onPointHover={setHoveredPoint}
             onPointClick={handlePointClick}
+            day={selectedDay}
             height="680px"
           />
         )}
