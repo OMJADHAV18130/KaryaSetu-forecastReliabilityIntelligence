@@ -7,7 +7,7 @@ import type { ForecastPoint } from '../../types';
 
 /**
  * Pane that holds the district fills. It sits below the default overlay pane so
- * the Survey of India sovereign boundary vector stays drawn on top.
+ * the sovereign boundary vector stays drawn on top.
  * Created once per map by <MapPanes> in IndiaMap.
  */
 export const DISTRICT_PANE = 'districtRisk';

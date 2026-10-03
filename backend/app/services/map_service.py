@@ -92,6 +92,72 @@ class MapService:
                 })
         return profiles
 
+    # Meteorology variables that can be interpolated between reference cells.
+    INTERPOLATED_FIELDS = (
+        "tp", "t2m", "mslp", "u10", "v10", "q850", "z500", "w500",
+        "bust_pattern_similarity",
+    )
+
+    def get_profile_at(self, lat: float, lon: float) -> Dict[str, Any]:
+        """
+        Build a meteorological profile for an arbitrary coordinate.
+
+        The reference grid holds 19 cells inside the Indian domain, which is far
+        too coarse for a district centroid or a map click. The nine model
+        drivers are therefore interpolated from the surrounding reference cells
+        with inverse-distance weighting.
+
+        This is *input interpolation*, not a second model: the single point is
+        still scored by the trained booster. Responses label this explicitly so
+        the UI never implies a per-district forecast run.
+
+        Args:
+            lat: Latitude (°N)
+            lon: Longitude (°E)
+
+        Returns:
+            Profile dict, plus ``method``, ``distance_km`` and ``source_cell``
+            describing how it was derived.
+        """
+        reference = self.get_all_meteorology_profiles()
+        if not reference:  # pragma: no cover - GRID_DATA is a module constant
+            raise RuntimeError("No reference meteorology grid available")
+
+        # Inverse-distance weighting over the four nearest reference cells.
+        ordered = sorted(
+            reference,
+            key=lambda p: (p["lat"] - lat) ** 2 + (p["lon"] - lon) ** 2,
+        )
+        neighbours = ordered[:4]
+
+        weights = []
+        for p in neighbours:
+            d = float(np.hypot(p["lat"] - lat, p["lon"] - lon))
+            weights.append(1.0 / d if d > 1e-6 else 1e6)
+        total = sum(weights)
+
+        profile: Dict[str, Any] = {"lat": lat, "lon": lon}
+        for field in self.INTERPOLATED_FIELDS:
+            profile[field] = sum(
+                w * p[field] for w, p in zip(weights, neighbours)
+            ) / total
+
+        nearest = neighbours[0]
+        profile["region"] = nearest["region"]
+        profile["method"] = "inverse_distance_interpolation_of_model_inputs"
+        profile["source_cell"] = f"{nearest['lat']}N {nearest['lon']}E"
+        profile["distance_km"] = round(
+            float(
+                np.hypot(
+                    (nearest["lat"] - lat) * 111.32,
+                    (nearest["lon"] - lon) * 111.32 * np.cos(np.radians(lat)),
+                )
+            ),
+            1,
+        )
+        profile["neighbour_count"] = len(neighbours)
+        return profile
+
     def detect_risk_areas(self, predictions: List[Dict[str, Any]], threshold: float = 0.5) -> List[Dict[str, Any]]:
         """
         Detect high-risk areas from grid predictions using spatial clustering.

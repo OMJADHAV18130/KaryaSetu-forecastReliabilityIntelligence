@@ -93,10 +93,35 @@ export function levelFor(value: number): ReliabilityLevel {
   return 'LOW';
 }
 
-export const LEVEL_TONE: Record<ReliabilityLevel, { text: string; chip: string }> = {
-  HIGH: { text: 'text-emerald-300', chip: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  MODERATE: { text: 'text-amber-300', chip: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
-  LOW: { text: 'text-rose-300', chip: 'bg-rose-500/15 text-rose-300 border-rose-500/40' },
+/**
+ * Tone classes for the three reliability levels.
+ *
+ * Each entry carries a light-theme and a dark-theme variant: the map overlays
+ * and the panels behind them are dark in one theme and light in the other, so
+ * a single fixed colour cannot stay legible in both.
+ */
+export const LEVEL_TONE: Record<
+  ReliabilityLevel,
+  { text: string; chip: string; solid: string }
+> = {
+  HIGH: {
+    text: 'text-emerald-700 dark:text-emerald-300',
+    chip:
+      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40',
+    solid: '#059669',
+  },
+  MODERATE: {
+    text: 'text-amber-700 dark:text-amber-300',
+    chip:
+      'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/40',
+    solid: '#d97706',
+  },
+  LOW: {
+    text: 'text-rose-700 dark:text-rose-300',
+    chip:
+      'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/40',
+    solid: '#dc2626',
+  },
 };
 
 export function percent(value: number): string {

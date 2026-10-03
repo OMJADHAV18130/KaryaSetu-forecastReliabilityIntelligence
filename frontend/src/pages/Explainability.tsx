@@ -1,269 +1,583 @@
-import { useState, useMemo } from 'react';
-import { useGlobalExplanation } from '../hooks';
-import { getLocalExplanation } from '../services/api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { HelpCircle, Sparkles, Layers, Activity, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import type { LocalExplanation } from '../types';
+import { useMemo, useState } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { Info, Layers, MapPin } from 'lucide-react';
+import { useGlobalExplanation, useLocationExplanation } from '../hooks';
+import { useTheme } from '../lib/theme';
+import {
+  LoadingBlock,
+  PageHeader,
+  ProbabilityStat,
+  ReliabilityBadge,
+  UnavailableBlock,
+} from '../components/PageHeader';
+import ModelInputTable from '../components/ModelInputTable';
+import type { ShapFeature } from '../types';
 
-const SAMPLE_FEATURES = {
-  total_precipitation_24hr: 0.0482,
-  '2m_temperature': 298.4,
-  mean_sea_level_pressure: 99750,
-  '10m_u_component_of_wind': 4.2,
-  '10m_v_component_of_wind': 2.1,
-  specific_humidity_850: 0.017,
-  geopotential_500: 56300,
-  vertical_velocity_500: -0.31,
-  longitude: 73.125,
-  latitude: 19.6875,
-  lead_hours: 96,
+/** A reference-grid cell with a genuinely high and a low bust probability. */
+const PRESET_POINTS = [
+  { label: 'Central Bay of Bengal', lat: 19.6875, lon: 85.0 },
+  { label: 'Delhi', lat: 28.6139, lon: 77.209 },
+  { label: 'Tamil Nadu coast', lat: 13.0827, lon: 80.2707 },
+  { label: 'Gangetic plain', lat: 25.5941, lon: 85.1376 },
+];
+
+type Tab = 'global' | 'location';
+
+/** Human-readable names for the feature keys the model reads. */
+const FEATURE_LABELS: Record<string, string> = {
+  total_precipitation_24hr: '24h precipitation',
+  '2m_temperature': '2 m temperature',
+  mean_sea_level_pressure: 'Sea-level pressure',
+  '10m_u_component_of_wind': '10 m U wind',
+  '10m_v_component_of_wind': '10 m V wind',
+  specific_humidity_850: 'Humidity at 850 hPa',
+  geopotential_500: 'Geopotential at 500 hPa',
+  vertical_velocity_500: 'Vertical velocity at 500 hPa',
+  bust_pattern_similarity: 'Bust pattern similarity',
+  longitude: 'Longitude',
+  latitude: 'Latitude',
+  lead_hours: 'Lead time',
 };
 
+function featureLabel(key: string): string {
+  return FEATURE_LABELS[key] ?? key;
+}
+
 export default function Explainability() {
-  const [activeTab, setActiveTab] = useState<'global' | 'local'>('global');
-  const [localData, setLocalData] = useState<LocalExplanation | null>(null);
-  const [localLoading, setLocalLoading] = useState(false);
-  const { data: globalData, isLoading: globalLoading, error: globalError } = useGlobalExplanation();
+  const [tab, setTab] = useState<Tab>('global');
+  const [day, setDay] = useState(4);
+  const [point, setPoint] = useState({ lat: 25.5941, lon: 85.1376 });
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
-  const isLoading = activeTab === 'global' ? globalLoading : localLoading;
-  const rawData = activeTab === 'global' ? globalData : localData;
+  const global = useGlobalExplanation();
+  const local = useLocationExplanation(point, day);
 
-  const handleLocalExplain = async () => {
-    setLocalLoading(true);
-    try {
-      const result = await getLocalExplanation(SAMPLE_FEATURES);
-      setLocalData(result);
-    } catch (err) {
-      console.error('Failed to compute local explanation:', err);
-    } finally {
-      setLocalLoading(false);
+  const axisColor = isDark ? '#94a3b8' : '#475569';
+  const gridColor = isDark ? '#334155' : '#e2e8f0';
+
+  const globalRows = useMemo(
+    () =>
+      (global.data?.features ?? []).map((f) => ({
+        feature: featureLabel(f.feature),
+        key: f.feature,
+        importance: f.mean_abs_shap,
+      })),
+    [global.data]
+  );
+
+  const localRows = useMemo(
+    () =>
+      (local.data?.features ?? []).map((f: ShapFeature) => ({
+        feature: featureLabel(f.feature),
+        key: f.feature,
+        shap: f.shap_value,
+        value: f.value,
+        direction: f.direction,
+        rank: f.rank,
+      })),
+    [local.data]
+  );
+
+  /**
+   * Rebuilds the prediction from the SHAP values, so the page can show its own
+   * arithmetic instead of asking to be believed.
+   *
+   * TreeSHAP decomposes the booster's log-odds, so `sigmoid(base_value + sum)`
+   * returns the booster's own probability, not the calibrated figure at the top of
+   * the page. Both stages are therefore shown: the decomposition is exact against
+   * the first, and the gap to the second is the calibrator, named as such rather
+   * than left for the reader to puzzle over.
+   */
+  const checksum = useMemo(() => {
+    const baseValue = local.data?.base_value;
+    const uncalibrated = local.data?.uncalibrated_probability;
+    const reported = local.data?.bust_probability;
+    if (
+      baseValue == null ||
+      uncalibrated == null ||
+      reported == null ||
+      localRows.length === 0
+    ) {
+      return null;
     }
-  };
 
-  // Safely normalize feature list from whatever format backend/mock supplies
-  const normalizedFeatures = useMemo(() => {
-    if (!rawData?.features || !Array.isArray(rawData.features)) return [];
-    return rawData.features.map((f: any, idx: number) => {
-      const shapVal = typeof f.shap_value === 'number' ? f.shap_value : typeof f.mean_abs_shap === 'number' ? f.mean_abs_shap : 0.0;
-      const rank = typeof f.rank === 'number' ? f.rank : typeof f.importance_rank === 'number' ? f.importance_rank : idx + 1;
-      const val = typeof f.value === 'number' ? f.value : shapVal;
-      const direction = f.direction || (shapVal > 0 ? 'increases_bust_risk' : 'decreases_bust_risk');
+    const shapSum = localRows.reduce((total, row) => total + row.shap, 0);
+    const reconstructed = 1 / (1 + Math.exp(-(baseValue + shapSum)));
+    const closesExactly = Math.abs(reconstructed - uncalibrated) <= 5e-4;
 
-      return {
-        feature: f.feature || `Feature ${idx + 1}`,
-        shap_value: shapVal,
-        value: val,
-        rank,
-        direction,
-      };
-    });
-  }, [rawData]);
+    const explanation = !local.data?.calibration_applied
+      ? 'The calibrator is unavailable in this deployment, so the reported figure is the booster output itself and the two rows agree.'
+      : closesExactly
+        ? 'The bars rebuild the booster output exactly. The sigmoid calibrator then moved it to the reported figure, which is why the last two rows differ.'
+        : `The bars rebuild the booster output to within ${Math.abs(
+            reconstructed - uncalibrated
+          ).toFixed(4)}. The remaining gap to the reported figure is the sigmoid calibrator, which TreeSHAP does not decompose.`;
 
-  const chartData = useMemo(() => {
-    return normalizedFeatures.map((f) => ({
-      feature: f.feature,
-      value: Math.abs(f.shap_value),
-      shap_value: f.shap_value,
-      direction: f.direction,
-    }));
-  }, [normalizedFeatures]);
+    return {
+      baseValue,
+      shapSum,
+      reconstructed,
+      uncalibrated,
+      reported,
+      closesExactly,
+      explanation,
+    };
+  }, [local.data, localRows]);
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white mb-1 flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-accent" />
-            AI EXPLAINABILITY & SHAP CONTRIBUTIONS
-          </h1>
-          <p className="text-sm text-slate-400">
-            Interpretability layer quantifying exact meteorological drivers of forecast bust risk
-          </p>
-        </div>
-        <div className="flex items-center gap-2 bg-surface-800 border border-surface-700 px-3 py-1.5 rounded-lg text-xs font-mono">
-          <Activity className="w-4 h-4 text-emerald-400" />
-          <span className="text-slate-300">TreeSHAP Explainer Online</span>
-        </div>
-      </div>
+    <div className="flex min-h-screen flex-col">
+      <PageHeader
+        title="Explainability"
+        description="Attribution from the trained booster: which inputs moved this particular prediction, and which inputs matter most across the stored background sample."
+      />
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setActiveTab('global')}
-          type="button"
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeTab === 'global'
-              ? 'bg-accent text-white shadow-lg shadow-accent/20'
-              : 'bg-surface-700 text-slate-400 hover:text-white hover:bg-surface-600'
-          }`}
+      <div className="flex-1 space-y-4 p-4">
+        {/* ── Tabs ── */}
+        <div
+          role="tablist"
+          aria-label="Attribution view"
+          className="flex flex-wrap gap-1 rounded-md border border-line bg-panel p-1"
         >
-          <Layers className="w-4 h-4" />
-          Global Feature Importance
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('local');
-            if (!localData) handleLocalExplain();
-          }}
-          type="button"
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeTab === 'local'
-              ? 'bg-accent text-white shadow-lg shadow-accent/20'
-              : 'bg-surface-700 text-slate-400 hover:text-white hover:bg-surface-600'
-          }`}
-        >
-          <HelpCircle className="w-4 h-4" />
-          Local Sample Explanation (Why Bust Occurs)
-        </button>
-      </div>
-
-      {isLoading ? (
-        <div className="h-72 bg-surface-800 rounded-xl border border-surface-700 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-9 h-9 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-slate-300 font-medium">Computing TreeSHAP value contributions...</p>
-            <p className="text-xs text-slate-500 mt-1">Evaluating Shapley game-theoretic coalitions across 11 meteorological variables</p>
-          </div>
+          {(
+            [
+              { id: 'global' as const, label: 'Across all cells', icon: Layers },
+              { id: 'location' as const, label: 'At one coordinate', icon: MapPin },
+            ] satisfies { id: Tab; label: string; icon: typeof Layers }[]
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              onClick={() => setTab(item.id)}
+              className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+                tab === item.id
+                  ? 'bg-brand text-white'
+                  : 'text-ink-muted hover:bg-raised hover:text-ink'
+              }`}
+            >
+              <item.icon className="h-3.5 w-3.5" />
+              {item.label}
+            </button>
+          ))}
         </div>
-      ) : globalError && activeTab === 'global' ? (
-        <div className="p-6 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 mb-6 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-sm">Failed to retrieve SHAP explanations</h3>
-            <p className="text-xs text-rose-400 mt-1">Please ensure the backend is running and model artifacts are loaded.</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          {activeTab === 'local' && localData && (
-            <div className="bg-surface-800 p-5 rounded-xl border border-surface-700 mb-6 shadow-lg">
-              <h2 className="text-base font-bold text-white mb-2 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                LOCAL SHAP EXPLANATION (SAMPLE ATMOSPHERIC STATE)
-              </h2>
-              <p className="text-xs text-slate-400 mb-4">
-                Location: Mumbai Coast (19.68°N, 73.12°E) &bull; Lead Time: 96h (Day 4) &bull; High Moisture & Updraft
-              </p>
-              <div className="flex gap-6">
-                <div className="bg-surface-900/80 px-4 py-3 rounded-lg border border-surface-700">
-                  <p className="text-xs text-slate-400 uppercase font-semibold">Predicted Bust Risk</p>
-                  <p className="text-2xl font-extrabold text-red-400 font-mono mt-0.5">
-                    {((localData.bust_probability || 0.72) * 100).toFixed(1)}%
+
+        {/* ── Global importance ── */}
+        {tab === 'global' && (
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <p className="card-title">Mean absolute SHAP value</p>
+                <p className="text-[11.5px] text-ink-muted">
+                  {global.data?.background_samples
+                    ? `Averaged over ${global.data.background_samples} stored background samples.`
+                    : 'Averaged over the stored background samples.'}
+                </p>
+              </div>
+              {global.data?.model_version && (
+                <span className="font-mono text-[11px] text-ink-faint">
+                  {global.data.model_version}
+                </span>
+              )}
+            </div>
+
+            <div className="p-4">
+              {global.isPending && <LoadingBlock label="Computing TreeSHAP values…" />}
+
+              {global.isError && (
+                <UnavailableBlock message="The backend could not be reached, so global importance is unavailable." />
+              )}
+
+              {global.data && !global.data.available && (
+                <UnavailableBlock
+                  message={
+                    global.data.message ??
+                    'Attribution could not be computed in this deployment.'
+                  }
+                />
+              )}
+
+              {global.data?.available && globalRows.length > 0 && (
+                <>
+                  <div className="h-[380px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={globalRows}
+                        layout="vertical"
+                        margin={{ top: 4, right: 44, bottom: 4, left: 8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
+                        <XAxis
+                          type="number"
+                          stroke={axisColor}
+                          fontSize={11}
+                          tick={{ fill: axisColor, fontSize: 11 }}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="feature"
+                          stroke={axisColor}
+                          fontSize={11}
+                          width={168}
+                          tick={{ fill: axisColor, fontSize: 11 }}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: isDark ? '#111827' : '#ffffff',
+                            border: `1px solid ${gridColor}`,
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          formatter={(value: number) => [value.toFixed(4), 'Mean |SHAP|']}
+                        />
+                        <Bar dataKey="importance" fill="#0891b2" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-ink-muted">
+                    <Info className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                    <span>
+                      Mean absolute SHAP measures how far a feature moves the model output
+                      on average. It is a magnitude, so it carries no direction — the
+                      per-prediction view below is where direction comes from.
+                    </span>
                   </p>
-                </div>
-                <div className="bg-surface-900/80 px-4 py-3 rounded-lg border border-surface-700">
-                  <p className="text-xs text-slate-400 uppercase font-semibold">Calibrated Confidence</p>
-                  <p className="text-2xl font-extrabold text-emerald-400 font-mono mt-0.5">
-                    {((localData.confidence || 0.28) * 100).toFixed(1)}%
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SHAP Chart */}
-          <div className="bg-surface-800 p-5 rounded-xl border border-surface-700 mb-6 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-slate-300 uppercase tracking-wider font-bold">
-                {activeTab === 'global' ? 'Global Mean Absolute SHAP Importance (|SHAP|)' : 'Local Feature Contributions to Forecast Risk'}
-              </p>
-              <span className="text-xs text-slate-400">11 Meteorological Features</span>
-            </div>
-
-            <div className="h-[420px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={11} />
-                  <YAxis type="category" dataKey="feature" stroke="#94a3b8" fontSize={11} width={190} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
-                    labelStyle={{ color: '#e2e8f0', fontWeight: 'bold' }}
-                    formatter={(val: any) => [typeof val === 'number' ? val.toFixed(4) : val, 'SHAP Impact']}
-                  />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]}>
-                    {chartData.map((entry, idx) => (
-                      <Cell
-                        key={`cell-${idx}`}
-                        fill={entry.direction === 'increases_bust_risk' ? '#ef4444' : '#10b981'}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="flex items-center gap-6 mt-4 pt-3 border-t border-surface-700">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="text-xs text-slate-300 font-medium">Increases Bust Risk (Uncertainty Driver)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                <span className="text-xs text-slate-300 font-medium">Decreases Bust Risk (Stabilizing Factor)</span>
-              </div>
+                </>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Features Table */}
-          <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden shadow-lg">
-            <div className="p-4 bg-surface-750 border-b border-surface-700 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Feature Influence Breakdown
-              </h3>
-              <span className="text-xs text-slate-400">Sorted by Absolute SHAP Impact</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-surface-700 bg-surface-900/50">
-                    <th className="text-xs text-slate-400 uppercase tracking-wider p-3">Rank</th>
-                    <th className="text-xs text-slate-400 uppercase tracking-wider p-3">Feature Name</th>
-                    <th className="text-xs text-slate-400 uppercase tracking-wider p-3">Sample Value</th>
-                    <th className="text-xs text-slate-400 uppercase tracking-wider p-3">SHAP Value</th>
-                    <th className="text-xs text-slate-400 uppercase tracking-wider p-3">Impact Direction</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {normalizedFeatures.map((f, idx) => (
-                    <tr key={idx} className="border-b border-surface-700/50 hover:bg-surface-700/30 transition-colors">
-                      <td className="p-3 text-sm text-slate-300 font-mono font-semibold">#{f.rank}</td>
-                      <td className="p-3 text-sm text-white font-mono">{f.feature}</td>
-                      <td className="p-3 text-sm text-slate-300 font-mono">{typeof f.value === 'number' ? f.value.toFixed(4) : f.value}</td>
-                      <td className="p-3 text-sm font-mono font-bold">
-                        <span className={f.shap_value > 0 ? 'text-red-400' : 'text-emerald-400'}>
-                          {f.shap_value > 0 ? '+' : ''}{f.shap_value.toFixed(4)}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={`px-2.5 py-1 text-xs rounded-full font-semibold inline-flex items-center gap-1 ${
-                            f.direction === 'increases_bust_risk'
-                              ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                          }`}
-                        >
-                          {f.direction === 'increases_bust_risk' ? 'Increases Risk' : 'Stabilizes Forecast'}
-                        </span>
-                      </td>
-                    </tr>
+        {/* ── Per-coordinate attribution ── */}
+        {tab === 'location' && (
+          <>
+            <div className="card">
+              <div className="card-header">
+                <p className="card-title">Coordinate</p>
+                <span className="font-mono text-[12px] font-semibold text-brand">
+                  Day {day} · +{day * 24} h
+                </span>
+              </div>
+              <div className="space-y-3 p-4">
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_POINTS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setPoint({ lat: preset.lat, lon: preset.lon })}
+                      className={`chip border transition-colors ${
+                        point.lat === preset.lat && point.lon === preset.lon
+                          ? 'border-brand bg-brand-soft text-brand-ink'
+                          : 'border-line bg-raised text-ink-muted hover:text-ink'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
+                </div>
 
-      {/* Advisory Note */}
-      <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl mt-6 flex items-start gap-3">
-        <HelpCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-blue-300 leading-relaxed">
-          <strong>Meteorological Notice:</strong> SHAP values explain model attribution within the XGBoost decision trees,
-          reflecting feature sensitivity rather than deterministic physical causation. Strong negative vertical velocity (updrafts)
-          and elevated 850 hPa specific humidity typically emerge as the primary contributors to precipitation forecast busts.
-        </p>
+                <div className="grid items-end gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="field-label" htmlFor="exp-lat">
+                      Latitude °N
+                    </label>
+                    <input
+                      id="exp-lat"
+                      type="number"
+                      step="0.0001"
+                      min={8}
+                      max={37}
+                      value={point.lat}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v) && v >= 8 && v <= 37) {
+                          setPoint((p) => ({ ...p, lat: v }));
+                        }
+                      }}
+                      className="field-input font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="exp-lon">
+                      Longitude °E
+                    </label>
+                    <input
+                      id="exp-lon"
+                      type="number"
+                      step="0.0001"
+                      min={68}
+                      max={98}
+                      value={point.lon}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v) && v >= 68 && v <= 98) {
+                          setPoint((p) => ({ ...p, lon: v }));
+                        }
+                      }}
+                      className="field-input font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={day}
+                    onChange={(e) => setDay(Number(e.target.value))}
+                    aria-label="Forecast day"
+                    className="w-full accent-brand"
+                  />
+                  <div className="mt-1 flex justify-between text-[11px] text-ink-faint">
+                    <span>D1</span>
+                    <span className="font-semibold text-brand">Day {day}</span>
+                    <span>D10</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <div className="min-w-0">
+                  <p className="card-title truncate">
+                    {point.lat.toFixed(4)}°N, {point.lon.toFixed(4)}°E
+                  </p>
+                  <p className="text-[11.5px] text-ink-muted">
+                    {local.data?.region ? `Nearest reference sector: ${local.data.region}` : 'Indian domain'}
+                  </p>
+                </div>
+                {local.data?.available && (
+                  <ReliabilityBadge value={local.data.confidence} />
+                )}
+              </div>
+
+              <div className="space-y-4 p-4">
+                {local.isPending && <LoadingBlock label="Scoring and attributing…" />}
+
+                {local.isError && (
+                  <UnavailableBlock message="The backend could not be reached, so no attribution is shown." />
+                )}
+
+                {local.data && !local.data.available && (
+                  <UnavailableBlock
+                    message={
+                      local.data.message ??
+                      'Attribution could not be computed in this deployment.'
+                    }
+                  />
+                )}
+
+                {local.data?.available && (
+                  <>
+                    <ProbabilityStat
+                      bustProbability={local.data.bust_probability}
+                      confidence={local.data.confidence}
+                    />
+
+                    <p className="text-[11px] leading-relaxed text-ink-muted">
+                      A positive contribution pushed the prediction towards a bust, a
+                      negative one away from it. These bars decompose the booster's own
+                      output; the sigmoid calibrator then adjusts that output, and both
+                      stages are shown below the table so the arithmetic can be checked.
+                    </p>
+
+                    <div className="h-[340px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={localRows}
+                          layout="vertical"
+                          margin={{ top: 4, right: 44, bottom: 4, left: 8 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
+                          <XAxis
+                            type="number"
+                            stroke={axisColor}
+                            fontSize={11}
+                            tick={{ fill: axisColor, fontSize: 11 }}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="feature"
+                            stroke={axisColor}
+                            fontSize={11}
+                            width={168}
+                            tick={{ fill: axisColor, fontSize: 11 }}
+                          />
+                          <ReferenceLine
+                            x={0}
+                            stroke={axisColor}
+                            strokeWidth={1.5}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: isDark ? '#111827' : '#ffffff',
+                              border: `1px solid ${gridColor}`,
+                              borderRadius: 8,
+                              fontSize: 12,
+                            }}
+                            formatter={(value: number) => [
+                              value.toFixed(4),
+                              'SHAP value',
+                            ]}
+                          />
+                          <Bar dataKey="shap" radius={[3, 3, 3, 3]}>
+                            {localRows.map((entry) => (
+                              <Cell
+                                key={entry.key}
+                                fill={
+                                  entry.shap > 0
+                                    ? '#dc2626'
+                                    : entry.shap < 0
+                                    ? '#059669'
+                                    : '#64748b'
+                                }
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span className="flex items-center gap-1.5 text-[11.5px] text-ink-muted">
+                        <span className="h-2.5 w-2.5 rounded-sm bg-risk-high" />
+                        Raises bust probability
+                      </span>
+                      <span className="flex items-center gap-1.5 text-[11.5px] text-ink-muted">
+                        <span className="h-2.5 w-2.5 rounded-sm bg-emerald-600 dark:bg-emerald-400" />
+                        Lowers bust probability
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {local.data?.available && localRows.length > 0 && (
+              <div className="card">
+                <div className="card-header">
+                  <p className="card-title">Contribution detail</p>
+                  <span className="text-[11px] text-ink-muted">By absolute SHAP value</span>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Rank</th>
+                        <th scope="col">Input</th>
+                        <th scope="col" className="text-right">Value</th>
+                        <th scope="col" className="text-right">SHAP value</th>
+                        <th scope="col">Effect</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {localRows.map((row) => (
+                        <tr key={row.key}>
+                          <td className="font-mono font-semibold">#{row.rank}</td>
+                          <td>{row.feature}</td>
+                          <td className="text-right font-mono tabular-nums">
+                            {row.value.toFixed(3)}
+                          </td>
+                          <td
+                            className={`text-right font-mono font-semibold tabular-nums ${
+                              row.shap > 0 ? 'text-risk-high' : 'text-emerald-600 dark:text-emerald-400'
+                            }`}
+                          >
+                            {row.shap > 0 ? '+' : ''}
+                            {row.shap.toFixed(4)}
+                          </td>
+                          <td>
+                            <span
+                              className={`chip border ${
+                                row.shap > 0
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-300'
+                                  : row.shap < 0
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                  : 'border-line bg-raised text-ink-muted'
+                              }`}
+                            >
+                              {row.shap > 0
+                                ? 'Raises risk'
+                                : row.shap < 0
+                                ? 'Lowers risk'
+                                : 'No effect'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {checksum && (
+                  <div className="border-t border-line px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                      Does it add up?
+                    </p>
+                    <dl className="mt-2 space-y-1 font-mono text-[11.5px] tabular-nums text-ink-muted">
+                      <div className="flex justify-between gap-4">
+                        <dt>Model base rate (log-odds)</dt>
+                        <dd className="text-ink">{checksum.baseValue.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt>Sum of the {localRows.length} SHAP values</dt>
+                        <dd className="text-ink">{checksum.shapSum.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4 border-t border-line pt-1">
+                        <dt>Booster probability, rebuilt from the bars</dt>
+                        <dd className="text-ink">{checksum.reconstructed.toFixed(6)}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt>Booster probability, reported by the model</dt>
+                        <dd className="text-ink">{checksum.uncalibrated.toFixed(6)}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4 border-t border-line pt-1">
+                        <dt>After sigmoid calibration &mdash; the figure above</dt>
+                        <dd className="text-ink">{checksum.reported.toFixed(4)}</dd>
+                      </div>
+                    </dl>
+                    <p className="mt-2 text-[11px] leading-relaxed text-ink-muted">
+                      {checksum.explanation}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {local.data?.model_inputs && Object.keys(local.data.model_inputs).length > 0 && (
+              <div className="card">
+                <div className="card-header">
+                  <div>
+                    <p className="card-title">Inputs behind this attribution</p>
+                    <p className="text-[11.5px] text-ink-muted">
+                      The values the booster actually read.
+                    </p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <ModelInputTable
+                    inputs={local.data.model_inputs}
+                    derivation={local.data.derivation}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -76,3 +76,45 @@ export function useGlobalExplanation() {
     staleTime: 300000,
   });
 }
+
+/**
+ * Model evaluation for a single coordinate. `point` is null until the user
+ * clicks the map or picks a place, which keeps the query disabled by default.
+ */
+export function useCoordinatePrediction(point: { lat: number; lon: number } | null, day: number) {
+  return useQuery({
+    queryKey: ['coordinatePrediction', point?.lat, point?.lon, day],
+    queryFn: () => api.getLocationDetail(point!.lat, point!.lon, day),
+    enabled: point !== null,
+    staleTime: 60000,
+  });
+}
+
+/**
+ * Attribution for one coordinate. The probability in the response is the same
+ * model evaluation the SHAP values decompose.
+ */
+export function useLocationExplanation(
+  point: { lat: number; lon: number } | null,
+  day: number
+) {
+  return useQuery({
+    queryKey: ['locationExplanation', point?.lat, point?.lon, day],
+    queryFn: () => api.getLocationExplanation(point!.lat, point!.lon, day),
+    enabled: point !== null,
+    staleTime: 300000,
+  });
+}
+
+/**
+ * The model's own day-by-day curve for one coordinate: every day is a separate
+ * evaluation, not a fit or an interpolation.
+ */
+export function useTimeSeries(point: { lat: number; lon: number } | null, days?: number[]) {
+  return useQuery({
+    queryKey: ['timeSeries', point?.lat, point?.lon, days?.join(',') ?? 'all'],
+    queryFn: () => api.getTimeSeries(point!.lat, point!.lon, days),
+    enabled: point !== null,
+    staleTime: 60000,
+  });
+}

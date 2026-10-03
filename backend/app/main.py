@@ -4,7 +4,7 @@ KaryaSetu — Forecast Reliability Intelligence API
 AI-based forecast bust detection for medium-range rainfall forecasts.
 Research prototype using XGBoost with sigmoid calibration.
 
-This is NOT an operational NCMRWF system. All metrics are research test-set results.
+This is NOT an operational forecasting system. All scores are research test-set results.
 """
 
 from .core import compat
@@ -84,5 +84,5 @@ async def root():
         "environment": ENVIRONMENT,
         "documentation": "/docs",
         "scope": "Research prototype — Rainfall forecast bust detection",
-        "disclaimer": "This is a research prototype. Not an operational NCMRWF system.",
+        "disclaimer": "This is a research prototype. Not an operational forecasting system.",
     }

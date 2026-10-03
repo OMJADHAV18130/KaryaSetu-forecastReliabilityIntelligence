@@ -21,9 +21,11 @@ export default function ForecastMap() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">FORECAST MAP</h1>
-        <p className="text-sm text-slate-400">
-          {layer === 'bust_probability' ? 'Probability of forecast bust' : 'Forecast confidence'}
+        <h1 className="text-2xl font-bold text-ink mb-1">BUST RISK MAP</h1>
+        <p className="text-sm text-ink-muted">
+          {layer === 'bust_probability'
+            ? 'Probability of a rainfall forecast bust — district view, with the trained grid one click away'
+            : 'Forecast confidence (1 − bust probability) — district view, with the trained grid one click away'}
         </p>
       </div>
 
@@ -37,10 +39,10 @@ export default function ForecastMap() {
       </div>
 
       {isLoading ? (
-        <div className="h-[calc(100vh-230px)] min-h-[700px] bg-surface-800 rounded-lg border border-surface-700 flex items-center justify-center">
+        <div className="h-[calc(100vh-230px)] min-h-[700px] bg-panel rounded-lg border border-line flex items-center justify-center">
           <div className="text-center">
-            <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-slate-400">Loading forecast data...</p>
+            <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-ink-muted">Loading forecast data...</p>
           </div>
         </div>
       ) : (

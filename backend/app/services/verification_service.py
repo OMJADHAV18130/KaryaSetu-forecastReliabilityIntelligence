@@ -1,362 +1,181 @@
 """
-Verification Service — Handles real forecast vs reference comparison
-and documented historical Indian extreme weather forecast bust events.
+Verification Service — Forecast vs reference comparison, and historical case records.
+
+Scope note
+----------
+This prototype has no operational verification archive. The trained model scores
+a *bust probability* from forecast meteorology alone; confirming a bust actually
+occurred needs an archive of medium-range forecasts paired with gauge or
+reanalysis observations.
+
+No such archive is bundled here, so both endpoints below report
+``available = False`` and an empty result set. They deliberately do NOT return
+sample or illustrative rows: a forecast/observation pair that was never measured
+would be indistinguishable from a real one once it reached the screen, and the
+prototype's published skill figures come from the September 2019 held-out test
+set instead (see ``/api/model-performance``).
+
+To make these endpoints real, drop a verification archive in and point
+``VERIFICATION_ARCHIVE_PATH`` at it — see :meth:`load_archive` for the record
+shape that is expected.
 """
 
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("karyasetu")
 
-# Real historical Indian extreme weather forecast bust cases
-REAL_HISTORICAL_EVENTS: List[Dict[str, Any]] = [
-    {
-        "event_id": "EVT-2023-HP",
-        "name": "2023 Himachal Pradesh Flash Floods",
-        "date": "July 9–11, 2023",
-        "region": "Kullu, Mandi & Beas Basin",
-        "state": "Himachal Pradesh",
-        "latitude": 31.95,
-        "longitude": 77.10,
-        "forecast_rainfall_mm": 78.5,
-        "observed_rainfall_mm": 224.2,
-        "absolute_error_mm": 145.7,
-        "lead_days": 4,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.88,
-        "confidence_level": "LOW",
-        "severity": "CRITICAL",
-        "synoptic_cause": "Active Western Disturbance interacting with vigorous Monsoon Trough causing orographic locking over Beas basin",
-        "nwp_model": "NCMRWF Unified Model (NCUM)",
-        "impact": "Unprecedented river surges, highway washouts, and flash flooding across Himachal Pradesh",
-    },
-    {
-        "event_id": "EVT-2021-TAUKTAE",
-        "name": "2021 Cyclone Tauktae Landfall",
-        "date": "May 17–18, 2021",
-        "region": "Saurashtra Coast & Diu",
-        "state": "Gujarat",
-        "latitude": 20.80,
-        "longitude": 71.20,
-        "forecast_rainfall_mm": 65.0,
-        "observed_rainfall_mm": 215.4,
-        "absolute_error_mm": 150.4,
-        "lead_days": 5,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.92,
-        "confidence_level": "LOW",
-        "severity": "CRITICAL",
-        "synoptic_cause": "Rapid intensification over anomalously warm Arabian Sea (SST > 31°C) with gale-force spiraling bands",
-        "nwp_model": "ECMWF IFS / GFS",
-        "impact": "Extreme coastal gale gusts up to 185 km/h, heavy storm surge, and power grid collapse in Saurashtra",
-    },
-    {
-        "event_id": "EVT-2020-AMPHAN",
-        "name": "2020 Super Cyclone Amphan",
-        "date": "May 20, 2020",
-        "region": "Sundarbans & Kolkata",
-        "state": "West Bengal",
-        "latitude": 22.30,
-        "longitude": 88.30,
-        "forecast_rainfall_mm": 92.0,
-        "observed_rainfall_mm": 236.0,
-        "absolute_error_mm": 144.0,
-        "lead_days": 4,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.85,
-        "confidence_level": "LOW",
-        "severity": "CRITICAL",
-        "synoptic_cause": "Category 5 Super Cyclone eyewall moisture convergence colliding with southern Gangetic Delta",
-        "nwp_model": "NCUM-R / IMD GFS",
-        "impact": "Widespread urban inundation across Kolkata, saline embankment breaches in Sundarbans",
-    },
-    {
-        "event_id": "EVT-2019-FANI",
-        "name": "2019 Cyclone Fani Coastal Strike",
-        "date": "May 3, 2019",
-        "region": "Puri & Coastal Plain",
-        "state": "Odisha",
-        "latitude": 19.80,
-        "longitude": 85.80,
-        "forecast_rainfall_mm": 110.0,
-        "observed_rainfall_mm": 248.5,
-        "absolute_error_mm": 138.5,
-        "lead_days": 3,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.81,
-        "confidence_level": "MODERATE",
-        "severity": "HIGH",
-        "synoptic_cause": "Extremely Severe Cyclonic Storm landfall band with localized mesoscale rainband stagnation",
-        "nwp_model": "NCMRWF Global Ensemble (NEPS)",
-        "impact": "Extensive structural destruction in Puri, high-velocity squall and localized flash flooding",
-    },
-    {
-        "event_id": "EVT-2018-KERALA",
-        "name": "2018 Great Kerala Monsoon Deluge",
-        "date": "August 8–16, 2018",
-        "region": "Idukki & Wayanad Ghats",
-        "state": "Kerala",
-        "latitude": 9.85,
-        "longitude": 76.95,
-        "forecast_rainfall_mm": 120.0,
-        "observed_rainfall_mm": 310.8,
-        "absolute_error_mm": 190.8,
-        "lead_days": 5,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.94,
-        "confidence_level": "LOW",
-        "severity": "CRITICAL",
-        "synoptic_cause": "Persistent deep Bay of Bengal depression fueling strong Low-Level Jet into Western Ghats orography",
-        "nwp_model": "ECMWF ERA5 / NCUM",
-        "impact": "State-wide major reservoir spill, severe landslides, and century's worst flood emergency in Kerala",
-    },
-    {
-        "event_id": "EVT-2015-CHENNAI",
-        "name": "2015 Chennai Record Deluge",
-        "date": "December 1–2, 2015",
-        "region": "Meenambakkam & Tambaram",
-        "state": "Tamil Nadu",
-        "latitude": 13.00,
-        "longitude": 80.20,
-        "forecast_rainfall_mm": 85.0,
-        "observed_rainfall_mm": 494.0,
-        "absolute_error_mm": 409.0,
-        "lead_days": 4,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.96,
-        "confidence_level": "LOW",
-        "severity": "CRITICAL",
-        "synoptic_cause": "Stalled coastal confluence zone driven by strong Northeast Monsoon easterly wave over warm ocean",
-        "nwp_model": "IMD Global / Regional NWP",
-        "impact": "Submerged Chennai airport runways, Adyar river overtopping, and major humanitarian disaster",
-    },
-    {
-        "event_id": "EVT-2005-MUMBAI",
-        "name": "2005 Mumbai 944mm Cloudburst",
-        "date": "July 26, 2005",
-        "region": "Santacruz & Mithi Basin",
-        "state": "Maharashtra",
-        "latitude": 19.08,
-        "longitude": 72.88,
-        "forecast_rainfall_mm": 45.0,
-        "observed_rainfall_mm": 944.2,
-        "absolute_error_mm": 899.2,
-        "lead_days": 3,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.98,
-        "confidence_level": "LOW",
-        "severity": "CRITICAL",
-        "synoptic_cause": "Mesoscale offshore vortex trapped between Sahyadri mountains and monsoon Arabian surge",
-        "nwp_model": "Global Spectral Model",
-        "impact": "Historic 944 mm precipitation in 24 hours bringing India's financial capital to a standstill",
-    },
-    {
-        "event_id": "EVT-2023-SIKKIM",
-        "name": "2023 Sikkim Teesta Flash Flood",
-        "date": "October 4, 2023",
-        "region": "Chungthang & Lachen Valley",
-        "state": "Sikkim",
-        "latitude": 27.60,
-        "longitude": 88.65,
-        "forecast_rainfall_mm": 30.0,
-        "observed_rainfall_mm": 142.0,
-        "absolute_error_mm": 112.0,
-        "lead_days": 2,
-        "model_predicted_bust": True,
-        "model_bust_probability": 0.89,
-        "confidence_level": "LOW",
-        "severity": "HIGH",
-        "synoptic_cause": "Sudden localized cloudburst trigger over South Lhonak glacial lake causing catastrophic dam breach",
-        "nwp_model": "NCUM Regional",
-        "impact": "Chungthang hydro dam breach, extensive infrastructure loss along Teesta river valley",
-    },
-]
+VERIFICATION_ARCHIVE_PATH = os.getenv("VERIFICATION_ARCHIVE_PATH", "")
+CASE_ARCHIVE_PATH = os.getenv("CASE_ARCHIVE_PATH", "")
 
-# Real verification evaluation test set based on ERA5 vs ECMWF NWP verification
-REAL_VERIFICATION_RESULTS: List[Dict[str, Any]] = [
-    {
-        "latitude": 19.0760,
-        "longitude": 73.0000,
-        "region": "Maharashtra / Mumbai MMR",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 48.2,
-        "reference_rainfall": 92.5,
-        "absolute_error": 44.3,
-        "bust_threshold": 30.0,
-        "bust_status": True,
-        "confidence": 0.21,
-    },
-    {
-        "latitude": 25.3125,
-        "longitude": 84.3750,
-        "region": "Bihar / Gangetic Plains",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 24.0,
-        "reference_rainfall": 68.4,
-        "absolute_error": 44.4,
-        "bust_threshold": 25.0,
-        "bust_status": True,
-        "confidence": 0.18,
-    },
-    {
-        "latitude": 19.6875,
-        "longitude": 85.0000,
-        "region": "Odisha Coastal Plain",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 38.2,
-        "reference_rainfall": 81.0,
-        "absolute_error": 42.8,
-        "bust_threshold": 25.0,
-        "bust_status": True,
-        "confidence": 0.24,
-    },
-    {
-        "latitude": 25.5000,
-        "longitude": 91.5000,
-        "region": "Meghalaya / Assam (Cherrapunji Belt)",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 65.0,
-        "reference_rainfall": 138.5,
-        "absolute_error": 73.5,
-        "bust_threshold": 35.0,
-        "bust_status": True,
-        "confidence": 0.16,
-    },
-    {
-        "latitude": 14.8150,
-        "longitude": 74.1300,
-        "region": "Goa / Konkan Coast",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 22.7,
-        "reference_rainfall": 58.2,
-        "absolute_error": 35.5,
-        "bust_threshold": 25.0,
-        "bust_status": True,
-        "confidence": 0.28,
-    },
-    {
-        "latitude": 30.3165,
-        "longitude": 78.0322,
-        "region": "Uttarakhand / Himachal (Dehradun)",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 32.0,
-        "reference_rainfall": 41.5,
-        "absolute_error": 9.5,
-        "bust_threshold": 25.0,
-        "bust_status": False,
-        "confidence": 0.82,
-    },
-    {
-        "latitude": 30.9375,
-        "longitude": 75.3412,
-        "region": "Punjab (Ludhiana / Jalandhar)",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 8.4,
-        "reference_rainfall": 12.1,
-        "absolute_error": 3.7,
-        "bust_threshold": 20.0,
-        "bust_status": False,
-        "confidence": 0.94,
-    },
-    {
-        "latitude": 25.3125,
-        "longitude": 72.8000,
-        "region": "Rajasthan / Marwar",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 3.2,
-        "reference_rainfall": 4.0,
-        "absolute_error": 0.8,
-        "bust_threshold": 15.0,
-        "bust_status": False,
-        "confidence": 0.95,
-    },
-    {
-        "latitude": 14.4670,
-        "longitude": 78.8240,
-        "region": "Rayalaseema / South Andhra",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 9.2,
-        "reference_rainfall": 14.5,
-        "absolute_error": 5.3,
-        "bust_threshold": 20.0,
-        "bust_status": False,
-        "confidence": 0.89,
-    },
-    {
-        "latitude": 8.5241,
-        "longitude": 77.8500,
-        "region": "Tamil Nadu (South / Kanyakumari)",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 12.8,
-        "reference_rainfall": 16.0,
-        "absolute_error": 3.2,
-        "bust_threshold": 20.0,
-        "bust_status": False,
-        "confidence": 0.91,
-    },
-    {
-        "latitude": 27.5861,
-        "longitude": 92.0000,
-        "region": "Arunachal Pradesh (Tawang / Kameng)",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 18.0,
-        "reference_rainfall": 24.2,
-        "absolute_error": 6.2,
-        "bust_threshold": 25.0,
-        "bust_status": False,
-        "confidence": 0.88,
-    },
-    {
-        "latitude": 34.1526,
-        "longitude": 77.5771,
-        "region": "Ladakh (Leh / Indus Valley)",
-        "lead_hours": 96,
-        "day": 4,
-        "forecast_rainfall": 2.0,
-        "reference_rainfall": 2.8,
-        "absolute_error": 0.8,
-        "bust_threshold": 15.0,
-        "bust_status": False,
-        "confidence": 0.97,
-    },
-]
+NOT_CONNECTED_MESSAGE = (
+    "This prototype has no verification archive attached. A bust can only be "
+    "confirmed by comparing a stored medium-range forecast against the rainfall "
+    "that was actually measured at the same place and time. No such forecast or "
+    "observation archive is bundled here, so no comparison rows can be shown."
+)
+
+NO_CASES_MESSAGE = (
+    "No case archive is attached to this prototype. Adding one would require a "
+    "curated record of past bust events, each with the archived forecast, the "
+    "observed rainfall, and the model probability for the same cell — none of "
+    "which is available in this deployment."
+)
+
+# Field documentation for an archive record, surfaced by the API so an operator
+# knows exactly what to supply.
+VERIFICATION_RECORD_SHAPE = {
+    "latitude": "float, degrees north",
+    "longitude": "float, degrees east",
+    "valid_time": "ISO-8601 timestamp of the forecast target period",
+    "issue_time": "ISO-8601 timestamp the forecast was issued",
+    "lead_hours": "float, forecast lead time in hours",
+    "forecast_rainfall": "float, accumulated precipitation in mm",
+    "reference_rainfall": "float, observed or reanalysis precipitation in mm",
+    "reference_source": "string naming the observation product",
+}
+
+CASE_RECORD_SHAPE = {
+    "event_id": "stable identifier",
+    "name": "short event title",
+    "date": "period the event occurred",
+    "latitude": "float, degrees north",
+    "longitude": "float, degrees east",
+    "state": "string",
+    "forecast_rainfall_mm": "float, from the archived forecast",
+    "observed_rainfall_mm": "float, from the observation record",
+    "lead_days": "int, forecast lead time in days",
+    "model_bust_probability": "float, produced by running this model on the archived inputs",
+    "synoptic_cause": "string",
+}
 
 
 class VerificationService:
-    """Service providing real forecast vs reference verification and case studies."""
+    """Verification and case-archive lookups.
+
+    Every method returns the same envelope whether or not an archive is attached,
+    so the frontend can render one consistent "data not available" state.
+    """
+
+    def __init__(self) -> None:
+        self._verification: Optional[List[Dict[str, Any]]] = None
+        self._cases: Optional[List[Dict[str, Any]]] = None
+
+    @staticmethod
+    def load_archive(path: str, label: str) -> Optional[List[Dict[str, Any]]]:
+        """Read a JSON array of records from ``path``, or return None."""
+        if not path or not os.path.isfile(path):
+            return None
+        try:
+            import json
+
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, list):
+                raise ValueError("archive must be a JSON array of records")
+            logger.info("Loaded %d %s records from %s", len(data), label, path)
+            return data
+        except Exception as exc:  # pragma: no cover - operational path
+            logger.error("Could not read %s archive at %s: %s", label, path, exc)
+            return None
+
+    def _verification_records(self) -> Optional[List[Dict[str, Any]]]:
+        if self._verification is None:
+            self._verification = self.load_archive(
+                VERIFICATION_ARCHIVE_PATH, "verification"
+            )
+        return self._verification
+
+    def _case_records(self) -> Optional[List[Dict[str, Any]]]:
+        if self._cases is None:
+            self._cases = self.load_archive(CASE_ARCHIVE_PATH, "case")
+        return self._cases
 
     def get_verification(self) -> Dict[str, Any]:
-        """Return verification status and evaluation metrics."""
+        """Forecast vs reference comparison, if an archive is attached."""
+        records = self._verification_records()
+
+        if not records:
+            return {
+                "available": False,
+                "results": [],
+                "total_points": 0,
+                "bust_count": 0,
+                "reliable_count": 0,
+                "message": NOT_CONNECTED_MESSAGE,
+                "expected_record_shape": VERIFICATION_RECORD_SHAPE,
+                "reference_dataset": None,
+            }
+
+        for record in records:
+            forecast = record.get("forecast_rainfall")
+            reference = record.get("reference_rainfall")
+            if (
+                isinstance(forecast, (int, float))
+                and isinstance(reference, (int, float))
+                and "absolute_error" not in record
+            ):
+                record["absolute_error"] = round(abs(forecast - reference), 4)
+            if "bust_status" not in record and "bust_threshold" in record:
+                record["bust_status"] = record["absolute_error"] > record["bust_threshold"]
+
         return {
             "available": True,
-            "results": REAL_VERIFICATION_RESULTS,
-            "total_points": len(REAL_VERIFICATION_RESULTS),
-            "bust_count": sum(1 for r in REAL_VERIFICATION_RESULTS if r["bust_status"]),
-            "reliable_count": sum(1 for r in REAL_VERIFICATION_RESULTS if not r["bust_status"]),
-            "reference_dataset": "IMD In-Situ Gauge Grid & ERA5 Reanalysis Ground Truth",
-            "message": "Real verification comparison online: Evaluating NCMRWF/ECMWF Medium-Range Forecast vs Ground Truth Observations.",
+            "results": records,
+            "total_points": len(records),
+            "bust_count": sum(1 for r in records if r.get("bust_status")),
+            "reliable_count": sum(1 for r in records if not r.get("bust_status")),
+            "message": "Forecast versus reference comparison, read from the attached archive.",
+            "expected_record_shape": VERIFICATION_RECORD_SHAPE,
+            "reference_dataset": records[0].get("reference_source"),
         }
 
     def get_historical_events(self) -> Dict[str, Any]:
-        """Return documented historical extreme rainfall forecast bust events."""
+        """Documented bust cases, if a case archive is attached."""
+        records = self._case_records()
+
+        if not records:
+            return {
+                "available": False,
+                "results": [],
+                "total_events": 0,
+                "critical_events": 0,
+                "detection_rate": None,
+                "source": None,
+                "message": NO_CASES_MESSAGE,
+                "expected_record_shape": CASE_RECORD_SHAPE,
+            }
+
         return {
             "available": True,
-            "results": REAL_HISTORICAL_EVENTS,
-            "total_events": len(REAL_HISTORICAL_EVENTS),
-            "critical_events": sum(1 for e in REAL_HISTORICAL_EVENTS if e["severity"] == "CRITICAL"),
-            "detection_rate": "87.5%",
-            "source": "MoES / IMD Monsoon Reports & NCMRWF Case Archive",
+            "results": records,
+            "total_events": len(records),
+            "critical_events": sum(1 for e in records if e.get("severity") == "CRITICAL"),
+            "detection_rate": None,
+            "source": records[0].get("source"),
+            "message": "Case archive, read from the attached file.",
+            "expected_record_shape": CASE_RECORD_SHAPE,
         }
 
 

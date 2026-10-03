@@ -13,7 +13,7 @@ KaryaSetu is a full-stack research prototype for detecting rainfall forecast bus
 ```
 NWP / Weather Forecast Data
         ↓
-Feature Preparation (11 features)
+Feature Preparation (12 features)
         ↓
 Trained XGBoost Model
         ↓
@@ -30,28 +30,33 @@ Verification
 React Operational Dashboard
 ```
 
-### The Five Official Outcomes
+### The Five Stages
 
-1. **Forecast Confidence Map** — Day 1–Day 10, region-wise confidence
-2. **Forecast Bust Probability** — Probability of large rainfall forecast error
-3. **Error-Prone Area Detection** — Areas where forecast reliability is low
-4. **Explainable Output** — SHAP-based model feature contributions
-5. **Prototype Dashboard/API** — React + FastAPI operational-style prototype
+| Stage | What it answers | Page |
+| --- | --- | --- |
+| **DETECT** | Is there any place at this lead time where a rainfall forecast is likely to be badly wrong? | Overview, Bust Risk Map, Bust Detection |
+| **LOCATE** | Where exactly, and how does that change with lead day? | Location Search, Time Series |
+| **QUANTIFY** | How likely, expressed as a calibrated probability and a confidence band? | Bust Detection, Bust Risk Map |
+| **EXPLAIN** | Which drivers pushed this number, and which ones move the model most often? | Explainability |
+| **VERIFY** | Did a stored forecast actually verify against the rainfall that was measured? | Verification, Case Archive |
+
+Confidence is always `1 - bust_probability`. Bands are a display convention for
+this prototype: HIGH ≥ 0.70, MODERATE ≥ 0.40, LOW < 0.40.
 
 ### Map Views
 
-The India map carries a **view toggle in the map's top bar** — the default view is
-unchanged, and the risk map is an additional layer on top of the same map:
+The India map carries a **view toggle in the map's top bar**. The district bust risk
+map is the default view; the original grid map is kept intact alongside it:
 
 | View | Contents |
 | --- | --- |
-| **Grid Map** (default) | The 30 trained 5.625° model-grid anchors, the major district station pins, the optional coarse grid-cell bounds, and free hover/click inspection at any coordinate. |
-| **Bust Risk Map** | A district-level choropleth of all 755 Census 2011 districts, filled with the continuous bust-probability / confidence colour scale, with a threshold legend, the highest-bust-risk (or lowest-confidence) district ranking, and hover/click inspection. |
+| **Bust Risk Map** (default) | A district-level choropleth of all 755 Census 2011 districts, filled with the continuous bust-probability / confidence colour scale, with a threshold legend, the highest-bust-risk district ranking, and hover/click inspection. |
+| **Grid Map** | The trained 5.625° model-grid anchors, the major district station pins, the optional coarse grid-cell bounds, and free hover/click inspection at any coordinate. |
 
 Both views share the same `MapContainer`, so in **both** of them:
 
 - the **Indian Boundary Corrector** corrected tile layer stays active,
-- the **Survey of India sovereign boundary** vector overlay stays active and renders
+- the **sovereign boundary** vector overlay stays active and renders
   *above* the district fills (custom Leaflet pane `districtRisk`, z-index 350, below
   the default overlay pane at 400),
 - the day selector, layer selector, location drawer and inspection HUD behave the same.
@@ -114,12 +119,12 @@ Assets and helper:
 | **Target** | BUST (1) / NO BUST (0) |
 | **Bust Definition** | Rainfall forecast error > 90th percentile threshold |
 | **Threshold** | Calculated from training period (June–July 2019) |
-| **Features** | 11 meteorological and spatial features |
+| **Features** | 12 meteorological and spatial features |
 | **Domain** | India: 8°N–37°N, 68°E–98°E |
 | **Lead Time** | 24h–240h (Day 1–Day 10) |
 | **Grid** | 6 × 5 = 30 points (WeatherBench2 HRES) |
 
-### Features (11 total, exact order required)
+### Features (12 total, exact order required)
 
 | # | Feature | Description | Unit |
 |---|---------|-------------|------|
@@ -134,6 +139,7 @@ Assets and helper:
 | 9 | longitude | Longitude | °E |
 | 10 | latitude | Latitude | °N |
 | 11 | lead_hours | Forecast lead time | hours |
+| 12 | bust_pattern_similarity | Similarity of the forecast rainfall pattern to known bust patterns | 0–1 |
 
 ### Tuned Hyperparameters
 
@@ -161,16 +167,46 @@ Assets and helper:
 
 ### Performance Metrics (September 2019 Test Set)
 
+66,600 samples, of which 4,015 were busts (6.0% base rate). Split: train
+June–July 2019 (135,420 rows), validation August 2019 (68,820 rows), test
+September 2019 (66,600 rows). Calibration is sigmoid (Platt), fitted on the
+August validation split.
+
 | Metric | Value |
 |--------|-------|
-| ROC-AUC | 0.868 |
-| PR-AUC | 0.392 |
-| MCC | 0.349 |
+| ROC-AUC | 0.8679 |
+| PR-AUC | 0.3922 |
+| MCC | 0.3495 |
 | Accuracy | 86% |
+| Precision (bust class) | 25% |
+| Recall (bust class) | 67% |
+| F1 (bust class) | 0.360 |
+| Operating point | 0.50 |
 | Brier Score (raw) | 0.1060 |
 | Brier Score (calibrated) | 0.0466 |
 
-**NOTE**: These are research test-set results from the September 2019 test set. These are NOT operational NCMRWF performance statistics.
+Confusion matrix at threshold 0.50: TN 54,511 · FP 8,074 · FN 1,327 · TP 2,688.
+
+Sigmoid calibration is monotonic, so calibrated ROC-AUC and PR-AUC are unchanged;
+the Brier score is the metric calibration improves. F1 peaks earlier, at
+threshold 0.30 (0.4276); at 0.50 precision is 0.6202 and recall 0.2123. The full
+sweep is in `notebook_evaluation.json` and on the Model Scores page.
+
+#### Which evaluation is which
+
+`/api/model-performance` returns two blocks and deliberately never merges them:
+
+| Block | What it measures | Where the numbers come from |
+| --- | --- | --- |
+| `held_out_test_set` | How the model behaved on September 2019, which it never saw during fitting or calibration | Transcribed from the training notebook's own printed output into `backend/models/notebook_evaluation.json` |
+| `served_artifact` | What the booster this API actually loaded measures on the data it was fitted on | Computed at load time from the artifact's own metadata |
+
+`served_artifact` is **not** a generalisation score. It is reported so that the
+numbers on screen are traceable to the booster that is running, and it is labelled
+with its true sample count. The two blocks are not comparable to each other, and
+nothing in this project averages them.
+
+**NOTE**: These are the model's own September 2019 held-out test-set figures, transcribed from the training notebook into `backend/models/notebook_evaluation.json`. They are a record of a past evaluation, not live statistics. `/api/model-performance` reports them under `held_out_test_set` and separately reports what the booster loaded by this API measures on its own fitting data, so the two are never confused. See [Which evaluation is which](#which-evaluation-is-which).
 
 ## API Documentation
 
@@ -183,6 +219,7 @@ Returns service health status.
     "status": "ok",
     "model_loaded": true,
     "calibration_loaded": true,
+    "shap_available": true,
     "environment": "research"
 }
 ```
@@ -204,7 +241,8 @@ Single location prediction.
     "vertical_velocity_500": -0.31,
     "longitude": 73.125,
     "latitude": 19.6875,
-    "lead_hours": 96
+    "lead_hours": 96,
+    "bust_pattern_similarity": 0.55
 }
 ```
 
@@ -212,15 +250,34 @@ Single location prediction.
 ```json
 {
     "bust_probability": 0.72,
+    "uncalibrated_probability": 0.81,
+    "calibration_applied": true,
     "confidence": 0.28,
     "confidence_level": "LOW",
     "day": 4,
     "lead_hours": 96,
     "latitude": 19.6875,
     "longitude": 73.125,
-    "model_version": "xgb-rainfall-bust-v1"
+    "bust_pattern_similarity": 0.55,
+    "model_version": "xgb-rainfall-bust-v2",
+    "request_id": "3f9a1c22"
 }
 ```
+
+Every feature must be finite and inside the domain recorded in `FEATURE_SCHEMA`.
+NaN, infinity and out-of-domain values are rejected with a 422 rather than
+clipped, so a bad request cannot silently become a plausible forecast.
+
+All twelve features are **required**. `bust_pattern_similarity` in particular has
+no defensible default: the booster reads it, so substituting a heuristic value
+would put an invented number in front of the model and return a probability that
+looks measured when nothing had been measured. A missing feature is a 422.
+
+The response reports both stages of the calculation. `uncalibrated_probability` is
+the booster's own output; the sigmoid calibrator maps that to `bust_probability`,
+which is the figure the UI shows. `calibration_applied` is `false` when the
+calibrator is unavailable, in which case the two are the same number. Both are
+returned so that no adjustment happens off the page.
 
 ### GET /api/forecast/map
 
@@ -234,9 +291,27 @@ Summary statistics for a given day.
 
 ### GET /api/forecast/location
 
-Detailed forecast for a specific location.
+Score one coordinate for one lead day.
 
-**Parameters:** `latitude`, `longitude`, `day`
+**Parameters:** `latitude` (8–37), `longitude` (68–98), `day` (1–10)
+
+The meteorological drivers are interpolated by inverse distance from the 4 nearest
+cells of the reference grid, then the trained model scores that single point. The
+response carries a `derivation` block (`method`, `source_cell`, `distance_km`,
+`neighbour_count`) which the UI displays, so no screen implies a per-district
+forecast run that did not happen.
+
+### GET /api/forecast/time-series
+
+Score one coordinate across several lead days.
+
+**Parameters:** `latitude`, `longitude`, `days` (comma-separated, 1–10; defaults to 1–10)
+
+Each day is a separate evaluation of the trained model at the same coordinate, so
+the curve is the model's own day-by-day behaviour rather than a fit or an
+interpolation between days. Because lead time is itself one of the model's
+features, every point carries its own `model_inputs` vector — the input table
+changes with the day selector.
 
 ### GET /api/bust-risk
 
@@ -254,23 +329,72 @@ Error-prone areas detected via spatial clustering of model predictions.
 
 Global SHAP feature importance.
 
+Global importance is the **mean absolute SHAP value**, which is a magnitude and so
+carries no direction. Only the per-prediction breakdown has direction.
+
 ### POST /api/explanation/local
 
-Local SHAP explanation for a single prediction.
+Attribution for a single feature vector.
 
-**Request:** Same features as /api/predict.
+**Request:** The feature dictionary, in training units.
+
+### GET /api/explanation/location
+
+Attribution for one coordinate, end to end.
+
+**Parameters:** `latitude`, `longitude`, `day`
+
+**Response highlights:**
+
+| Field | Meaning |
+| --- | --- |
+| `base_value` | SHAP's expected value, in log-odds |
+| `features[]` | `shap_value`, `value`, `direction`, `rank` for all 12 features |
+| `uncalibrated_probability` | What the bars add up to |
+| `bust_probability` | After sigmoid calibration — the headline figure |
+| `derivation` | How the meteorology at this coordinate was obtained |
+
+Interpolation, scoring and attribution all run against the same feature vector, so
+the numbers here describe one evaluation rather than three.
+
+TreeSHAP decomposes the **booster's** log-odds, not the calibrator's, so the
+identity that holds is
+
+```
+sigmoid(base_value + Σ shap_values) = uncalibrated_probability
+```
+
+and the calibrator then maps that to `bust_probability`. Both figures are returned
+so the reader can check the bars rather than take them on trust. The Explainability
+page prints this arithmetic.
+
+When SHAP cannot be computed the endpoint returns `available: false`, an empty
+`features` array and the reason. It never substitutes a plausible-looking
+importance table.
 
 ### GET /api/verification
 
-Forecast vs reference comparison. Currently returns "not available" since verification data is not connected.
+Forecast vs reference comparison. Returns `available: false` with a message and the
+`expected_record_shape` it would need, because no forecast/observation archive is
+bundled with this prototype. Point `VERIFICATION_ARCHIVE_PATH` at a JSON file of
+real records to populate it.
 
 ### GET /api/historical-events
 
-Historical verification records. Currently returns empty.
+The same arrangement under `CASE_ARCHIVE_PATH`. A row is only listed once the
+archived forecast, the observed rainfall and the model probability for the same cell
+are all present, because anything less could not be checked.
+
+### GET /api/model-info
+
+Identity of the loaded artifact: version, type, feature count, feature names, tuned
+hyperparameters and load status. Evaluation figures are deliberately not repeated
+here, so the two evaluations cannot be read as one number.
 
 ### GET /api/model-performance
 
-Model performance metrics and metadata.
+Two evaluations, reported side by side and never merged: `held_out_test_set` and
+`served_artifact`. See [Which evaluation is which](#which-evaluation-is-which).
 
 ## Project Structure
 
@@ -278,33 +402,60 @@ Model performance metrics and metadata.
 project-root/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI application
-│   │   ├── api/routes/           # API endpoints
-│   │   ├── core/                # Config, logging
-│   │   ├── schemas/             # Pydantic models
-│   │   ├── services/            # Business logic
-│   │   ├── ml/                  # Model loading, prediction, SHAP
-│   │   └── data/                # Data loading, preprocessing
-│   ├── models/                  # Trained model artifacts
-│   │   ├── xgboost_model/
-│   │   ├── calibration/
-│   │   └── shap/
-│   ├── train_model.py           # Model training script
+│   │   ├── main.py                     # FastAPI application
+│   │   ├── api/routes/                 # health, forecast, bust, explanation,
+│   │   │                               # verification, model, prediction
+│   │   ├── core/                       # config, logging, sklearn/xgb compat shim
+│   │   ├── schemas/                    # Pydantic models
+│   │   ├── services/                   # prediction, map, model, verification
+│   │   ├── ml/                         # model_loader, predictor, feature_schema,
+│   │   │                               # shap_explainer
+│   │   └── data/                       # loaders, preprocessing
+│   ├── models/                         # Trained artifacts
+│   │   ├── xgboost_model/model.json
+│   │   ├── calibration/calibrator.joblib
+│   │   ├── shap/background_data.joblib
+│   │   ├── feature_schema.json         # the loaded artifact's own contract
+│   │   └── notebook_evaluation.json    # transcribed September 2019 figures
+│   ├── train_model.py                  # Training / refit entry point
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── components/          # React components
-│   │   ├── pages/               # Page components
-│   │   ├── services/            # API client
-│   │   ├── hooks/               # Data fetching hooks
-│   │   ├── types/               # TypeScript types
+│   │   ├── components/
+│   │   │   ├── charts/                 # BustTimeSeriesChart
+│   │   │   ├── layout/                 # Layout (mock-mode banner), Sidebar
+│   │   │   ├── map/                    # IndiaMap, DistrictRiskMap, MapControls,
+│   │   │   │                           # RiskLegend, LocationDrawer, CoordinateProbe
+│   │   │   ├── PageHeader.tsx          # PageHeader, ReliabilityBadge,
+│   │   │   │                           # ProbabilityStat, Loading/Unavailable blocks
+│   │   │   ├── LocationAnalysis.tsx
+│   │   │   └── ModelInputTable.tsx
+│   │   ├── pages/                      # 10 routes, one file each
+│   │   ├── data/                       # districtIndex, indianDistricts,
+│   │   │                               # notebookEvaluation (offline copy)
+│   │   ├── lib/                        # theme.tsx, riskScale.ts
+│   │   ├── services/api.ts             # Single API client + mock fixtures
+│   │   ├── hooks/index.ts
+│   │   ├── types/index.ts
 │   │   ├── App.tsx
-│   │   └── main.tsx
+│   │   └── index.css                   # Theme tokens in :root / .dark
+│   ├── public/
+│   │   ├── india_boundary_corrections.pmtiles
+│   │   ├── india-districts.geojson     # 755 districts, simplified
+│   │   └── india-states.geojson
+│   ├── scripts/
+│   │   └── build-district-geojson.mjs
 │   ├── package.json
 │   └── .env.example
+├── docker-compose.yml
+├── start.bat
+├── verify_live.py
 └── README.md
 ```
+
+All inference happens on the backend. The frontend never loads a model and never
+computes a probability, SHAP value or score; it renders what the API returns.
 
 ## Setup Instructions
 
@@ -390,54 +541,80 @@ python train_model.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| HOST / PORT | 0.0.0.0 / 8000 | Bind address |
 | ENVIRONMENT | research | Environment name |
 | DEBUG | false | Debug mode |
 | LOG_LEVEL | INFO | Logging level |
-| MODEL_PATH | models/xgboost_model/model.json | Path to XGBoost model |
-| CALIBRATOR_PATH | models/calibration/calibrator.joblib | Path to calibrator |
-| SHAP_BACKGROUND_PATH | models/shap/background_data.joblib | Path to SHAP background |
+| MODEL_PATH | models/xgboost_model/model.json | Path to the trained booster |
+| CALIBRATOR_PATH | models/calibration/calibrator.joblib | Path to the sigmoid calibrator |
+| SHAP_BACKGROUND_PATH | models/shap/background_data.joblib | Path to the SHAP background sample |
+| FEATURE_SCHEMA_PATH | models/feature_schema.json | Feature names, order and domains |
+| VERIFICATION_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for the Verification page |
+| CASE_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for the Case Archive page |
 | CORS_ORIGINS | http://localhost:5173,... | Allowed CORS origins |
+
+The two archive variables default to unset. That is the honest state of this
+deployment: with no archive configured, both endpoints return `available: false`
+plus the record shape they would need, instead of placeholder rows. Every request
+is logged with a request id, the model version and the lead time.
 
 ### Frontend (.env)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| VITE_API_MODE | mock | API mode: mock or live |
+| VITE_API_MODE | live | `live` calls the backend; `mock` uses offline fixtures |
 | VITE_API_BASE_URL | http://localhost:8000 | Backend API URL |
+
+The checked-in `.env` uses `live`. Set `VITE_API_MODE=mock` to run the UI without
+a backend.
 
 ## Mock Mode vs Live Mode
 
-### Mock Mode (default)
-
-- Uses demo data with the same schemas as the API
-- Clearly labeled as "DEMO DATA" in the UI
-- Works without the backend running
-- Supports the full demo flow
-
-### Live Mode
+### Live Mode (the checked-in default)
 
 - Connects to the FastAPI backend
-- Uses real model predictions
-- Requires backend to be running with trained model artifacts
+- Every prediction on screen is a real evaluation of the loaded booster
+- Requires the backend running with the trained artifacts
 
-To switch modes, set `VITE_API_MODE=live` in `frontend/.env`.
+### Mock Mode
+
+- Works without the backend running, using offline fixtures with the same schemas
+- A persistent **DEMO DATA** banner sits under the header for the whole session, so
+  no fixture value can be mistaken for model output
+- The model is not loaded, so anything that genuinely needs it reports itself
+  unavailable rather than substituting a number: the loaded-artifact evaluation,
+  SHAP attribution, and model identity. The transcribed September 2019 figures are
+  still readable, because they are a static record rather than a live computation
+- Verification and Case Archive stay unavailable, exactly as in live mode
+
+To switch modes, set `VITE_API_MODE` in `frontend/.env`.
 
 ## Demo Flow
 
-The application supports the following 2–3 minute demonstration:
+Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → VERIFY:
 
-1. **Open Overview** — Show India reliability map with confidence layer
-2. **Select Day 4** — Switch to a different forecast lead time
-3. **Switch Layer** — Change from Confidence to Bust Probability
-4. **Click High-Risk Location** — Show 72% bust probability, 28% confidence
-5. **Click Explain Risk** — Show SHAP feature contributions
-6. **Switch D1–D10** — Show changing reliability across lead times
-7. **Open Verification** — Show forecast vs reference (currently unavailable)
-8. **Open Model Performance** — Show ROC-AUC, PR-AUC, MCC, Accuracy, Brier score
+1. **Overview** — the day-4 picture: how much of the area is in each confidence band
+2. **Bust Risk Map** — the district choropleth, with the grid map one click away.
+   Change the day from D1 to D10 and watch the highest-risk ranking reorder
+3. **Bust Detection** — the ranked list of cells above the probability threshold,
+   with the clustered error-prone areas
+4. **Location Search** — search any of the 755 districts (try Pune, Guwahati,
+   Bikaner) or type a coordinate. The result shows the bust probability, the exact
+   inputs behind it, and the day-by-day curve
+5. **Time Series** — click the map to move the coordinate, then step the day slider.
+   The input table changes with the day, because lead time is a model input
+6. **Explainability** — the mean |SHAP| ranking across the background sample, then
+   the per-coordinate diverging bars for the same point, with direction
+7. **Model Scores** — the September 2019 held-out figures, the confusion matrix,
+   the Brier improvement from calibration, and the threshold sweep showing F1
+   peaking at 0.30
+8. **Verification** and **Case Archive** — both say DATA NOT AVAILABLE and explain
+   the record shape they would need. That is the intended result, not a stub
+9. **Toggle the theme** — light is the default; the map canvas stays dark in both
 
 ## Research Limitations
 
-1. **Research Prototype**: This is a research prototype, not an operational NCMRWF system
+1. **Research Prototype**: This is a research prototype, not an operational forecasting system
 2. **Limited Domain**: Trained on WeatherBench2 HRES/ERA5 for India region only
 3. **Single Variable**: Demonstrates rainfall forecast bust detection only — not temperature, pressure, or other variables
 4. **Research Data**: Uses WeatherBench2 research data, not operational NWP forecasts
@@ -463,23 +640,46 @@ The model does NOT detect:
 
 The architecture is designed to be extensible to other variables, but the implemented demonstration remains focused on rainfall forecast bust detection.
 
-All performance metrics are from the September 2019 research test set. These are NOT operational NCMRWF performance statistics.
+All scores shown come from the September 2019 research test set. They are NOT
+operational performance statistics, and the loaded booster is not the same artifact
+the notebook evaluated — see [Which evaluation is which](#which-evaluation-is-which).
 
 ## Testing
 
-### Backend Tests
-
 ```bash
 cd backend
-pytest tests/
+pytest tests/          # 80 tests
 ```
-
-### Frontend Tests
 
 ```bash
 cd frontend
-npm run build
+npm run build          # tsc -b && vite build
 ```
+
+The backend suite runs against the real artifacts in `backend/models` through a
+`TestClient`. No model is mocked: the point of these tests is to check that the
+numbers the API emits obey the contracts the UI depends on, and a stubbed booster
+could not check that.
+
+| File | What it holds |
+| --- | --- |
+| `tests/conftest.py` | Shared fixtures, plus a recursive NaN/Inf check over every response |
+| `tests/test_probability_contract.py` | `confidence = 1 - bust_probability`, `day = lead_hours / 24`, band boundaries, determinism, per-day model inputs |
+| `tests/test_validation.py` | NaN, infinity, out-of-domain and missing features are all rejected; a 422 never carries a number |
+| `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability |
+
+Three of these are worth calling out, because each one guards a failure that would
+otherwise be invisible:
+
+- **Attribution must close.** `sigmoid(base_value + Σ shap_values)` has to equal the
+  probability reported alongside it. Without `base_value` the bars are a claim
+  nobody can test.
+- **Global importance must carry no direction.** Mean |SHAP| is a magnitude. A
+  `direction` field on it would state something the quantity cannot say.
+- **The confusion matrix must add up.** Reported precision, recall, accuracy and F1
+  have to follow from the four reported cells, and the cells have to sum to the
+  reported sample count. If they disagree, at least one figure is wrong and the page
+  gives a reader no way to tell which.
 
 ## Tech Stack
 

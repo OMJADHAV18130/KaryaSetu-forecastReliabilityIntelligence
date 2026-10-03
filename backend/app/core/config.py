@@ -68,5 +68,5 @@ WeatherBench2 HRES and ERA5 (research training data)
 - Validation: August 2019
 - Testing: September 2019
 
-**NOTE**: These are research test-set results, NOT operational NCMRWF statistics.
+**NOTE**: These are research test-set results, not operational statistics.
 """

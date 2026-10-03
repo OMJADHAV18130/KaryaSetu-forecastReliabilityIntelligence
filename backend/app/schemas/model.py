@@ -1,57 +1,122 @@
 """
-Pydantic schemas for model metadata and performance.
+Pydantic schemas for model metadata and evaluation figures.
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
 
 
-class ModelPerformance(BaseModel):
-    """Model performance metrics."""
-    model_config = {"protected_namespaces": ()}
-
-    model_name: str = "Forecast Bust Detector"
-    model_type: str = "XGBoost + Sigmoid Calibration"
-    test_period: str = "September 2019"
-    roc_auc: float = 0.8912
-    pr_auc: float = 0.4428
-    mcc: float = 0.4285
-    mcc_optimal: float = 0.4682
-    optimal_threshold: float = 0.70
-    precision: float = 0.3174
-    recall: float = 0.7148
-    f1: float = 0.4396
-    accuracy: float = 0.8901
-    brier_raw: float = 0.1060
-    brier_calibrated: float = 0.0466
-    model_version: str = "xgb-rainfall-bust-v2"
-    training_period: str = "June-July 2019"
-    validation_period: str = "August 2019"
-    features: List[str] = [
-        "total_precipitation_24hr",
-        "2m_temperature",
-        "mean_sea_level_pressure",
-        "10m_u_component_of_wind",
-        "10m_v_component_of_wind",
-        "specific_humidity_850",
-        "geopotential_500",
-        "vertical_velocity_500",
-        "longitude",
-        "latitude",
-        "lead_hours",
-        "bust_pattern_similarity",
-    ]
-    confusion_matrix: Optional[Dict[str, int]] = {
-        "true_negatives": 56412,
-        "false_positives": 6173,
-        "false_negatives": 1145,
-        "true_positives": 2870,
-    }
+class ConfusionMatrix(BaseModel):
+    true_negatives: int
+    false_positives: int
+    false_negatives: int
+    true_positives: int
 
 
-class HealthStatus(BaseModel):
-    """Health check response."""
-    status: str = "ok"
-    model_loaded: bool
+class ClassificationReport(BaseModel):
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+    f1_score: Optional[float] = None
+    accuracy: Optional[float] = None
+    macro_precision: Optional[float] = None
+    macro_recall: Optional[float] = None
+    macro_f1: Optional[float] = None
+
+
+class HeldOutTestMetrics(BaseModel):
+    """Figures from the notebook's own September 2019 evaluation run."""
+
+    label: str
+    n_samples: Optional[int] = None
+    n_bust: Optional[int] = None
+    confusion_matrix: Optional[ConfusionMatrix] = None
+    classification_report: Optional[ClassificationReport] = None
+    roc_auc: Optional[float] = None
+    pr_auc: Optional[float] = None
+    mcc: Optional[float] = None
+    brier_raw: Optional[float] = None
+    brier_calibrated: Optional[float] = None
+    calibration_method: Optional[str] = None
+    operating_threshold: Optional[float] = None
+    source_cells: List[int] = []
+    notes: List[str] = []
+
+
+class ServedArtifactMetrics(BaseModel):
+    """What the currently loaded booster measures on its own fitting data."""
+
+    label: str
+    n_samples: Optional[int] = None
+    roc_auc: Optional[float] = None
+    pr_auc: Optional[float] = None
+    mcc: Optional[float] = None
+    accuracy: Optional[float] = None
+    brier_raw: Optional[float] = None
+    brier_calibrated: Optional[float] = None
+    confusion_matrix: Optional[ConfusionMatrix] = None
+    note: str
+
+
+class ThresholdSweepRow(BaseModel):
+    threshold: float
+    precision: float
+    recall: float
+    f1: float
+
+
+class ThresholdSweep(BaseModel):
+    label: str
+    note: Optional[str] = None
+    rows: List[ThresholdSweepRow]
+
+
+class ModelSplits(BaseModel):
+    train: Optional[str] = None
+    validation: Optional[str] = None
+    test: Optional[str] = None
+    train_rows: Optional[int] = None
+    validation_rows: Optional[int] = None
+    test_rows: Optional[int] = None
+
+
+class ModelPerformanceResponse(BaseModel):
+    model_version: str
+    model_type: str
+    feature_count: int
+    features: List[str]
+    hyperparameters: Dict[str, Any] = {}
+
+    held_out_test_set: Optional[HeldOutTestMetrics] = None
+    served_artifact: ServedArtifactMetrics
+    splits: Optional[ModelSplits] = None
+    threshold_sweep: Optional[ThresholdSweep] = None
+
+    confidence_bands: Dict[str, Any] = {}
+    scope: str
+    research_only: bool = True
+    evaluation_note: Optional[str] = None
+
+
+class ModelInfoResponse(BaseModel):
+    """Identity of the loaded artifact.
+
+    Evaluation figures are deliberately absent. They belong on
+    ``/api/model-performance``, where the notebook's held-out test set and the
+    deployed booster's own data are reported as two separate things; repeating
+    them here would invite them to be read as one number.
+    """
+
+    model_version: str
+    model_type: str
+    feature_count: int
+    features: List[str]
+    hyperparameters: Dict[str, Any] = {}
+    is_ready: bool
+    model_loaded: bool = False
     calibration_loaded: bool
-    environment: str = "research"
+    shap_available: bool
+    environment: str
+    training_period: Optional[str] = None
+    validation_period: Optional[str] = None
+    test_period: Optional[str] = None

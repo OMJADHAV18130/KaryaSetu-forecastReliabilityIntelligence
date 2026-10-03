@@ -11,10 +11,10 @@ const DAYS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 export default function MapControls({ selectedDay, onDayChange, layer, onLayerChange }: MapControlsProps) {
   return (
-    <div className="flex flex-wrap items-center gap-4 p-4 bg-surface-800 rounded-lg border border-surface-700">
+    <div className="flex flex-wrap items-center gap-4 p-4 bg-panel rounded-lg border border-line">
       {/* Day selector */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-slate-400 uppercase tracking-wider">Day:</span>
+        <span className="text-xs text-ink-muted uppercase tracking-wider">Day:</span>
         <div className="flex gap-1">
           {DAYS.map((day) => (
             <button
@@ -22,8 +22,8 @@ export default function MapControls({ selectedDay, onDayChange, layer, onLayerCh
               onClick={() => onDayChange(day)}
               className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                 selectedDay === day
-                  ? 'bg-accent text-white'
-                  : 'bg-surface-700 text-slate-400 hover:bg-surface-600 hover:text-white'
+                  ? 'bg-brand text-ink'
+                  : 'bg-raised text-ink-muted hover:bg-raised hover:text-ink'
               }`}
             >
               D{day}
@@ -34,15 +34,15 @@ export default function MapControls({ selectedDay, onDayChange, layer, onLayerCh
 
       {/* Layer selector */}
       <div className="flex items-center gap-2">
-        <Layers className="w-4 h-4 text-slate-400" />
-        <span className="text-xs text-slate-400 uppercase tracking-wider">Layer:</span>
+        <Layers className="w-4 h-4 text-ink-muted" />
+        <span className="text-xs text-ink-muted uppercase tracking-wider">Layer:</span>
         <div className="flex gap-1">
           <button
             onClick={() => onLayerChange('confidence')}
             className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
               layer === 'confidence'
-                ? 'bg-accent text-white'
-                : 'bg-surface-700 text-slate-400 hover:bg-surface-600 hover:text-white'
+                ? 'bg-brand text-ink'
+                : 'bg-raised text-ink-muted hover:bg-raised hover:text-ink'
             }`}
           >
             Confidence
@@ -51,8 +51,8 @@ export default function MapControls({ selectedDay, onDayChange, layer, onLayerCh
             onClick={() => onLayerChange('bust_probability')}
             className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
               layer === 'bust_probability'
-                ? 'bg-accent text-white'
-                : 'bg-surface-700 text-slate-400 hover:bg-surface-600 hover:text-white'
+                ? 'bg-brand text-ink'
+                : 'bg-raised text-ink-muted hover:bg-raised hover:text-ink'
             }`}
           >
             Bust Probability
@@ -66,30 +66,30 @@ export default function MapControls({ selectedDay, onDayChange, layer, onLayerCh
           <>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-xs text-slate-400">HIGH (&ge;70%)</span>
+              <span className="text-xs text-ink-muted">HIGH (&ge;70%)</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-full bg-yellow-500" />
-              <span className="text-xs text-slate-400">MODERATE (40-69%)</span>
+              <span className="text-xs text-ink-muted">MODERATE (40-69%)</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-full bg-red-500" />
-              <span className="text-xs text-slate-400">LOW (&lt;40%)</span>
+              <span className="text-xs text-ink-muted">LOW (&lt;40%)</span>
             </div>
           </>
         ) : (
           <>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-full bg-red-500" />
-              <span className="text-xs text-slate-400">HIGH (&ge;70%)</span>
+              <span className="text-xs text-ink-muted">HIGH (&ge;70%)</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-full bg-yellow-500" />
-              <span className="text-xs text-slate-400">MODERATE (40-69%)</span>
+              <span className="text-xs text-ink-muted">MODERATE (40-69%)</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-xs text-slate-400">LOW (&lt;40%)</span>
+              <span className="text-xs text-ink-muted">LOW (&lt;40%)</span>
             </div>
           </>
         )}

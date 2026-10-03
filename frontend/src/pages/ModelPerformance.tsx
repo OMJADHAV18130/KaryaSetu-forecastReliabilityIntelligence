@@ -1,225 +1,528 @@
+import { useMemo } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { AlertTriangle, Info } from 'lucide-react';
 import { useModelPerformance, useGlobalExplanation } from '../hooks';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { useTheme } from '../lib/theme';
+import {
+  LoadingBlock,
+  PageHeader,
+  UnavailableBlock,
+} from '../components/PageHeader';
+
+/** Format a metric that may legitimately be absent, without inventing a value. */
+function num(value: number | null | undefined, digits = 3): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—';
+}
+
+function pct(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${(value * 100).toFixed(1)}%`
+    : '—';
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-raised px-3 py-2.5">
+      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-muted">
+        {label}
+      </p>
+      <p className="mt-0.5 font-mono text-xl font-bold tabular-nums text-ink">{value}</p>
+      {hint && <p className="mt-0.5 text-[11px] text-ink-muted">{hint}</p>}
+    </div>
+  );
+}
 
 export default function ModelPerformance() {
-  const { data: performance, isLoading } = useModelPerformance();
-  const { data: globalExpl } = useGlobalExplanation();
+  const { data, isLoading, isError } = useModelPerformance();
+  const { data: importance } = useGlobalExplanation();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
+  const gridColor = isDark ? '#334155' : '#e2e8f0';
+  const axisColor = isDark ? '#94a3b8' : '#475569';
+  const tooltipStyle = {
+    background: isDark ? '#111827' : '#ffffff',
+    border: `1px solid ${gridColor}`,
+    borderRadius: 8,
+    fontSize: 12,
+  };
+
+  const importanceRows = useMemo(
+    () =>
+      (importance?.features ?? []).map((f) => ({
+        feature: f.feature,
+        importance: f.mean_abs_shap,
+      })),
+    [importance]
+  );
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <div className="h-64 bg-surface-800 rounded-lg border border-surface-700 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-slate-400">Loading performance data...</p>
+      <div className="p-4">
+        <div className="card">
+          <LoadingBlock label="Loading evaluation figures…" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="p-4">
+        <PageHeader
+          title="Model Scores"
+          description="Held-out evaluation of the trained bust detection model."
+        />
+        <div className="card">
+          <div className="p-4">
+            <UnavailableBlock message="The backend could not be reached, so no evaluation figures can be shown." />
           </div>
         </div>
       </div>
     );
   }
 
-  if (!performance) return null;
-
-  const metrics = [
-    { label: 'ROC-AUC', value: performance.roc_auc, color: 'text-blue-400' },
-    { label: 'PR-AUC', value: performance.pr_auc, color: 'text-purple-400' },
-    { label: 'MCC', value: performance.mcc, color: 'text-cyan-400' },
-    { label: 'Accuracy', value: performance.accuracy, color: 'text-green-400' },
-  ];
-
-  const shapData = globalExpl?.features.map((f) => ({
-    feature: f.feature,
-    importance: Math.abs(f.shap_value),
-  })) || [];
+  const heldOut = data.held_out_test_set;
+  const artifact = data.served_artifact;
+  const report = heldOut?.classification_report;
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">MODEL PERFORMANCE</h1>
-        <p className="text-sm text-slate-400">{performance.model_type}</p>
-      </div>
+    <div className="flex min-h-screen flex-col">
+      <PageHeader
+        title="Model Scores"
+        description="Evaluation of the trained bust detection model, and the exact feature contract it reads."
+      />
 
-      {/* Model Info */}
-      <div className="bg-surface-800 p-4 rounded-lg border border-surface-700 mb-6">
-        <div className="grid grid-cols-4 gap-4 text-sm">
+      <div className="flex-1 space-y-4 p-4">
+        {/* ── Research-use notice ── */}
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div>
-            <p className="text-xs text-slate-400">Model</p>
-            <p className="text-white font-medium">{performance.model_name}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400">Test Period</p>
-            <p className="text-white font-medium">{performance.test_period}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400">Model Version</p>
-            <p className="text-white font-medium">{performance.model_version}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400">Features</p>
-            <p className="text-white font-medium">{performance.features?.length || 12} Features (Trajectory-Aware)</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Feature Enhancement Highlight: Time-Series Shape Matching */}
-      <div className="bg-cyan-500/10 border border-cyan-500/30 p-4 rounded-lg mb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="inline-block px-2 py-0.5 text-xs font-semibold bg-cyan-500/20 text-cyan-300 rounded mb-1">
-              NEW FEATURE: TIME-SERIES SHAPE MATCHING
-            </span>
-            <h3 className="text-sm font-semibold text-white">Historical Bust Archetype Cosine Similarity (bust_pattern_similarity)</h3>
-            <p className="text-xs text-slate-300 mt-1 max-w-3xl">
-              Compares current 10-day NWP precipitation trajectories (24h to 240h) against historical June-July bust archetypes.
-              Reduced false positives by <strong>23.5%</strong> and boosted Matthews Correlation Coefficient (MCC) from <strong>0.3495 &rarr; 0.4285</strong> (+22.6%).
-            </p>
-          </div>
-          <div className="text-right">
-            <span className="text-xs text-slate-400">Peak MCC @ Th=0.70</span>
-            <p className="text-lg font-bold text-cyan-400">0.4682</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        {metrics.map((m) => (
-          <div key={m.label} className="bg-surface-800 p-4 rounded-lg border border-surface-700">
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">{m.label}</p>
-            <p className={`text-3xl font-bold ${m.color}`}>{m.value.toFixed(3)}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Operating Threshold Comparison */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-surface-800 p-4 rounded-lg border border-surface-700">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Default Operating Point</span>
-            <span className="text-xs px-2 py-0.5 rounded bg-surface-700 text-slate-300 font-mono">Threshold = 0.50</span>
-          </div>
-          <div className="grid grid-cols-4 gap-2 text-center text-sm pt-2">
-            <div>
-              <p className="text-xs text-slate-400">Precision</p>
-              <p className="text-white font-bold">{((performance.precision || 0.3174) * 100).toFixed(1)}%</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400">Recall</p>
-              <p className="text-white font-bold">{((performance.recall || 0.7148) * 100).toFixed(1)}%</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400">F1-Score</p>
-              <p className="text-cyan-400 font-bold">{(performance.f1 || 0.4396).toFixed(3)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400">MCC</p>
-              <p className="text-cyan-400 font-bold">{(performance.mcc || 0.4285).toFixed(3)}</p>
-            </div>
+            <p className="font-semibold">Research prototype — not operational statistics.</p>
+            <p className="mt-0.5">{data.scope}</p>
           </div>
         </div>
 
-        <div className="bg-surface-800 p-4 rounded-lg border border-cyan-500/40">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">MCC-Optimal Operating Point</span>
-            <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">Threshold = {performance.optimal_threshold || 0.70}</span>
+        {/* ── Feature contract ── */}
+        <div className="card">
+          <div className="card-header">
+            <p className="card-title">Model and feature contract</p>
+            <span className="font-mono text-[11px] text-ink-faint">{data.model_version}</span>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-center text-sm pt-2">
-            <div>
-              <p className="text-xs text-slate-400">Precision</p>
-              <p className="text-emerald-400 font-bold">49.2%</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400">Recall</p>
-              <p className="text-white font-bold">51.2%</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400">F1-Score</p>
-              <p className="text-emerald-400 font-bold">0.502</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400">Optimal MCC</p>
-              <p className="text-emerald-400 font-bold">{(performance.mcc_optimal || 0.4682).toFixed(3)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Brier Score */}
-      <div className="bg-surface-800 p-4 rounded-lg border border-surface-700 mb-6">
-        <p className="text-xs text-slate-400 uppercase tracking-wider mb-3">Brier Score (Calibration)</p>
-        <div className="flex items-center gap-4">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-red-400">{performance.brier_raw.toFixed(4)}</p>
-            <p className="text-xs text-slate-400">Before Calibration</p>
-          </div>
-          <div className="text-2xl text-slate-400">→</div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-green-400">{performance.brier_calibrated.toFixed(4)}</p>
-            <p className="text-xs text-slate-400">After Calibration</p>
-          </div>
-          <div className="ml-auto">
-            <p className="text-sm text-green-400">
-              Improvement: {((1 - performance.brier_calibrated / performance.brier_raw) * 100).toFixed(1)}%
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Confusion Matrix */}
-      {performance.confusion_matrix && (
-        <div className="bg-surface-800 p-4 rounded-lg border border-surface-700 mb-6">
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-3">Confusion Matrix</p>
-          <div className="grid grid-cols-2 gap-2 max-w-xs">
-            <div className="bg-green-500/10 p-3 rounded text-center">
-              <p className="text-xs text-slate-400">True Negative</p>
-              <p className="text-xl font-bold text-green-400">{performance.confusion_matrix.true_negatives.toLocaleString()}</p>
-            </div>
-            <div className="bg-red-500/10 p-3 rounded text-center">
-              <p className="text-xs text-slate-400">False Positive</p>
-              <p className="text-xl font-bold text-red-400">{performance.confusion_matrix.false_positives.toLocaleString()}</p>
-            </div>
-            <div className="bg-orange-500/10 p-3 rounded text-center">
-              <p className="text-xs text-slate-400">False Negative</p>
-              <p className="text-xl font-bold text-orange-400">{performance.confusion_matrix.false_negatives.toLocaleString()}</p>
-            </div>
-            <div className="bg-blue-500/10 p-3 rounded text-center">
-              <p className="text-xs text-slate-400">True Positive</p>
-              <p className="text-xl font-bold text-blue-400">{performance.confusion_matrix.true_positives.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SHAP Feature Importance */}
-      {shapData.length > 0 && (
-        <div className="bg-surface-800 p-4 rounded-lg border border-surface-700 mb-6">
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-3">SHAP Feature Importance</p>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={shapData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis type="number" stroke="#94a3b8" fontSize={12} />
-              <YAxis type="category" dataKey="feature" stroke="#94a3b8" fontSize={11} width={180} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}
-                labelStyle={{ color: '#e2e8f0' }}
+          <div className="p-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Stat label="Model type" value={data.model_type.split(' ')[0]} hint={data.model_type} />
+              <Stat label="Features read" value={String(data.feature_count)} />
+              <Stat
+                label="Training split"
+                value={data.splits?.train ?? '—'}
+                hint={data.splits?.train_rows ? `${data.splits.train_rows.toLocaleString()} rows` : undefined}
               />
-              <Bar dataKey="importance" fill="#3b82f6">
-                {shapData.map((_, idx) => (
-                  <Cell key={idx} fill={idx < 3 ? '#ef4444' : idx < 6 ? '#f59e0b' : '#3b82f6'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+              <Stat
+                label="Test split"
+                value={data.splits?.test ?? '—'}
+                hint={data.splits?.test_rows ? `${data.splits.test_rows.toLocaleString()} rows` : undefined}
+              />
+            </div>
 
-      {/* Disclaimer */}
-      <div className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-lg">
-        <p className="text-sm text-yellow-400">
-          <strong>Scientific Disclaimer:</strong> Research prototype evaluation using the September 2019 test set.
-          These are not operational NCMRWF performance statistics. The model demonstrates rainfall forecast bust
-          detection using WeatherBench2 HRES and ERA5 research data.
-        </p>
+            <details className="mt-3">
+              <summary className="cursor-pointer text-[12.5px] font-semibold text-brand">
+                Show the {data.feature_count} feature names and tuned hyperparameters
+              </summary>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Feature</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.features.map((f, i) => (
+                        <tr key={f}>
+                          <td className="font-mono text-ink-muted">{i + 1}</td>
+                          <td className="font-mono text-[12.5px]">{f}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Hyperparameter</th>
+                        <th scope="col" className="text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(data.hyperparameters).map(([key, value]) => (
+                        <tr key={key}>
+                          <td className="font-mono text-[12.5px]">{key}</td>
+                          <td className="text-right font-mono tabular-nums">{String(value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        {/* ── Held-out test set ── */}
+        {heldOut ? (
+          <>
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <p className="card-title">{heldOut.label}</p>
+                  <p className="text-[11.5px] text-ink-muted">
+                    {heldOut.n_samples?.toLocaleString()} samples, of which{' '}
+                    {heldOut.n_bust?.toLocaleString()} were busts (
+                    {pct((heldOut.n_bust ?? 0) / (heldOut.n_samples || 1))} base rate)
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 p-4">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <Stat label="ROC-AUC" value={num(heldOut.roc_auc, 4)} hint="Ranking quality" />
+                  <Stat label="PR-AUC" value={num(heldOut.pr_auc, 4)} hint="Precision-recall area" />
+                  <Stat label="MCC" value={num(heldOut.mcc, 4)} hint="Balanced agreement" />
+                  <Stat label="Accuracy" value={pct(report?.accuracy)} />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <Stat label="Precision" value={pct(report?.precision)} hint="Bust class" />
+                  <Stat label="Recall" value={pct(report?.recall)} hint="Bust class" />
+                  <Stat label="F1" value={num(report?.f1_score)} hint="Bust class" />
+                  <Stat
+                    label="Operating point"
+                    value={num(heldOut.operating_threshold, 2)}
+                    hint="Threshold used for the report above"
+                  />
+                </div>
+
+                {heldOut.confusion_matrix && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                      Confusion matrix
+                    </p>
+                    <div className="grid max-w-md grid-cols-2 gap-2">
+                      {(
+                        [
+                          ['True negative', heldOut.confusion_matrix.true_negatives, 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10'],
+                          ['False positive', heldOut.confusion_matrix.false_positives, 'border-amber-200 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'],
+                          ['False negative', heldOut.confusion_matrix.false_negatives, 'border-orange-200 bg-orange-50 dark:border-orange-500/40 dark:bg-orange-500/10'],
+                          ['True positive', heldOut.confusion_matrix.true_positives, 'border-sky-200 bg-sky-50 dark:border-sky-500/40 dark:bg-sky-500/10'],
+                        ] as const
+                      ).map(([label, value, tone]) => (
+                        <div key={label} className={`rounded-md border px-3 py-2 ${tone}`}>
+                          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-muted">
+                            {label}
+                          </p>
+                          <p className="font-mono text-lg font-bold tabular-nums text-ink">
+                            {value.toLocaleString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {heldOut.brier_raw !== null && heldOut.brier_calibrated !== null && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                      Brier score — the metric calibration improves
+                    </p>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div>
+                        <p className="font-mono text-xl font-bold tabular-nums text-ink">
+                          {num(heldOut.brier_raw, 4)}
+                        </p>
+                        <p className="text-[11px] text-ink-muted">Before calibration</p>
+                      </div>
+                      <span className="text-ink-faint">→</span>
+                      <div>
+                        <p className="font-mono text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                          {num(heldOut.brier_calibrated, 4)}
+                        </p>
+                        <p className="text-[11px] text-ink-muted">After calibration</p>
+                      </div>
+                      <p className="text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        {pct(
+                          1 - (heldOut.brier_calibrated ?? 0) / (heldOut.brier_raw || 1)
+                        )}{' '}
+                        reduction
+                      </p>
+                    </div>
+                    {heldOut.calibration_method && (
+                      <p className="mt-2 text-[11px] text-ink-muted">
+                        Method: {heldOut.calibration_method}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {heldOut.notes.length > 0 && (
+                  <ul className="space-y-1">
+                    {heldOut.notes.map((note) => (
+                      <li
+                        key={note}
+                        className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-ink-muted"
+                      >
+                        <Info className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                        <span>{note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {data.threshold_sweep && data.threshold_sweep.rows.length > 0 && (
+              <div className="card">
+                <div className="card-header">
+                  <div>
+                    <p className="card-title">Precision and recall against the cut-off</p>
+                    <p className="text-[11.5px] text-ink-muted">{data.threshold_sweep.note}</p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <div className="h-[280px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={data.threshold_sweep.rows}
+                        margin={{ top: 8, right: 16, bottom: 4, left: -8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                        <XAxis
+                          dataKey="threshold"
+                          stroke={axisColor}
+                          fontSize={11}
+                          tick={{ fill: axisColor, fontSize: 11 }}
+                          tickFormatter={(v: number) => v.toFixed(2)}
+                          label={{
+                            value: 'Probability cut-off',
+                            position: 'insideBottom',
+                            offset: -2,
+                            fill: axisColor,
+                            fontSize: 11,
+                          }}
+                        />
+                        <YAxis
+                          domain={[0, 1]}
+                          stroke={axisColor}
+                          fontSize={11}
+                          tick={{ fill: axisColor, fontSize: 11 }}
+                          tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
+                          width={52}
+                        />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          formatter={(value: number, name: string) => [
+                            pct(value),
+                            name.charAt(0).toUpperCase() + name.slice(1),
+                          ]}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 11.5, color: axisColor }} />
+                        <ReferenceLine
+                          x={heldOut.operating_threshold ?? 0.5}
+                          stroke={axisColor}
+                          strokeDasharray="4 4"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="precision"
+                          stroke="#0891b2"
+                          strokeWidth={2}
+                          dot={{ r: 2 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="recall"
+                          stroke="#dc2626"
+                          strokeWidth={2}
+                          dot={{ r: 2 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="f1"
+                          stroke="#a855f7"
+                          strokeWidth={2}
+                          strokeDasharray="5 3"
+                          dot={{ r: 2 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="mt-3 table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th scope="col" className="text-right">Cut-off</th>
+                          <th scope="col" className="text-right">Precision</th>
+                          <th scope="col" className="text-right">Recall</th>
+                          <th scope="col" className="text-right">F1</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.threshold_sweep.rows.map((row) => (
+                          <tr
+                            key={row.threshold}
+                            className={
+                              row.threshold === heldOut.operating_threshold
+                                ? 'bg-brand-soft/60'
+                                : undefined
+                            }
+                          >
+                            <td className="text-right font-mono tabular-nums">
+                              {row.threshold.toFixed(2)}
+                            </td>
+                            <td className="text-right font-mono tabular-nums">
+                              {pct(row.precision)}
+                            </td>
+                            <td className="text-right font-mono tabular-nums">
+                              {pct(row.recall)}
+                            </td>
+                            <td className="text-right font-mono tabular-nums">
+                              {num(row.f1)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="card">
+            <div className="p-4">
+              <UnavailableBlock
+                message={
+                  data.evaluation_note ??
+                  'No transcribed held-out evaluation is available for this model.'
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── What the deployed booster actually measures ── */}
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <p className="card-title">{artifact.label}</p>
+              <p className="text-[11.5px] text-ink-muted">
+                {artifact.n_samples
+                  ? `${artifact.n_samples.toLocaleString()} samples`
+                  : 'Sample count not recorded'}
+              </p>
+            </div>
+          </div>
+          <div className="space-y-3 p-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Stat label="ROC-AUC" value={num(artifact.roc_auc, 4)} />
+              <Stat label="PR-AUC" value={num(artifact.pr_auc, 4)} />
+              <Stat label="MCC" value={num(artifact.mcc, 4)} />
+              <Stat label="Accuracy" value={pct(artifact.accuracy)} />
+            </div>
+            <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-ink-muted">
+              <Info className="mt-0.5 h-3 w-3 flex-shrink-0" />
+              <span>{artifact.note}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* ── Feature importance ── */}
+        {importanceRows.length > 0 && (
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <p className="card-title">Feature importance</p>
+                <p className="text-[11.5px] text-ink-muted">
+                  Mean absolute SHAP value over the stored background sample.
+                </p>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="h-[360px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={importanceRows}
+                    layout="vertical"
+                    margin={{ top: 4, right: 48, bottom: 4, left: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
+                    <XAxis
+                      type="number"
+                      stroke={axisColor}
+                      fontSize={11}
+                      tick={{ fill: axisColor, fontSize: 11 }}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="feature"
+                      stroke={axisColor}
+                      fontSize={11}
+                      width={200}
+                      tick={{ fill: axisColor, fontSize: 11 }}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(value: number) => [num(value, 4), 'Mean |SHAP|']}
+                    />
+                    <Bar dataKey="importance" fill="#0891b2" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Confidence bands ── */}
+        {typeof data.confidence_bands?.high === 'number' && (
+          <div className="card">
+            <div className="card-header">
+              <p className="card-title">Confidence bands used by this interface</p>
+            </div>
+            <div className="p-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Stat label="HIGH" value={`≥ ${data.confidence_bands.high}`} hint="confidence" />
+                <Stat label="MODERATE" value={`≥ ${data.confidence_bands.moderate}`} hint="confidence" />
+                <Stat label="LOW" value={`< ${data.confidence_bands.moderate}`} hint="confidence" />
+              </div>
+              <p className="mt-3 text-[11.5px] leading-relaxed text-ink-muted">
+                {String(data.confidence_bands.note)}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

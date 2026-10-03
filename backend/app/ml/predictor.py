@@ -38,7 +38,7 @@ class Predictor:
         Run prediction on a single set of features.
 
         Args:
-            features: Dictionary with all 11 model features
+            features: Dictionary with all 12 model features
 
         Returns:
             Dictionary with bust_probability, confidence, confidence_level, etc.
@@ -72,17 +72,24 @@ class Predictor:
         # Derive day from lead hours
         lead_hours = feature_vector[10]  # lead_hours is the 11th feature
         day = lead_hours_to_day(lead_hours)
-        bust_sim = feature_vector[11] if len(feature_vector) > 11 else None
+        bust_sim = feature_vector[11]
 
         return {
             "bust_probability": round(calibrated_prob, 4),
+            # Both stages are reported, not just the final one. SHAP decomposes the
+            # booster's own log-odds, so a reader comparing the attribution against
+            # the headline number needs to see what the booster said before the
+            # calibrator moved it. Showing only the calibrated figure makes a
+            # correct decomposition look wrong.
+            "uncalibrated_probability": round(raw_prob, 6),
+            "calibration_applied": self.calibration_loaded,
             "confidence": round(confidence, 4),
             "confidence_level": confidence_level,
             "day": day,
             "lead_hours": lead_hours,
             "latitude": feature_vector[9],
             "longitude": feature_vector[8],
-            "bust_pattern_similarity": round(bust_sim, 4) if bust_sim is not None else None,
+            "bust_pattern_similarity": round(bust_sim, 4),
             "model_version": self.model_version,
             "request_id": request_id,
         }
@@ -120,13 +127,10 @@ class Predictor:
                         val = features[api_name]
                         break
             if val is None:
-                if col == "bust_pattern_similarity":
-                    # Derive default similarity from precipitation intensity & lead time if omitted
-                    tp = float(features.get("total_precipitation_24hr", features.get("precipitation", 0.01)))
-                    lead_h = float(features.get("lead_hours", 24.0))
-                    val = float(np.clip(0.42 + min(0.40, tp * 12.0) + (lead_h / 240.0) * 0.12, 0.0, 1.0))
-                else:
-                    raise ValueError(f"Missing feature: {col}")
+                # No feature is ever substituted. An assumed value would enter the
+                # model as if it had been observed, and the resulting probability
+                # would look measured when nothing had been measured.
+                raise ValueError(f"Missing feature: {col}")
             val = float(val)
             if math.isnan(val) or math.isinf(val):
                 raise ValueError(f"Invalid value for {col}: {val}")

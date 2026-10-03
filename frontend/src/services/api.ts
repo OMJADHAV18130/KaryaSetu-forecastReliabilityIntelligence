@@ -5,6 +5,8 @@
  */
 
 import axios from 'axios';
+// Transcribed September 2019 evaluation figures, used only in mock mode.
+import evaluation from '../data/notebookEvaluation.json';
 import type {
   ForecastMapResponse,
   ForecastOverview,
@@ -13,17 +15,27 @@ import type {
   RiskAreasResponse,
   LocalExplanation,
   GlobalExplanation,
+  LocationExplanation,
   VerificationResponse,
   ModelPerformance,
+  ModelInfo,
   HealthStatus,
   LocationDetail,
   HistoricalEventsResponse,
+  TimeSeriesResponse,
 } from '../types';
 
 const API_MODE = import.meta.env.VITE_API_MODE || 'live';
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 // Strip trailing slash to prevent double slashes in routes
 const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '');
+
+/**
+ * True when the app is running on the offline fixtures instead of the backend.
+ * The shell shows a persistent banner in that case, so no value on screen can
+ * be mistaken for live model output.
+ */
+export const isMockMode = API_MODE === 'mock';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -121,6 +133,11 @@ function getMockPrediction(features: Record<string, number>): Prediction {
 
   return {
     bust_probability: bustProb,
+    // No booster runs in mock mode, so there is no calibration step to report.
+    // Saying so is the point: the UI can show that the two-stage breakdown is
+    // absent rather than presenting one invented stage as if it were real.
+    uncalibrated_probability: bustProb,
+    calibration_applied: false,
     confidence: 1.0 - bustProb,
     confidence_level: bustProb > 0.7 ? 'LOW' : bustProb > 0.4 ? 'MODERATE' : 'HIGH',
     day,
@@ -132,6 +149,23 @@ function getMockPrediction(features: Record<string, number>): Prediction {
 }
 
 // ── API Functions ─────────────────────────────────────────────────────────────
+
+/**
+ * Placeholder driver values used only when VITE_API_MODE=mock. They exist so
+ * the feature tables render in backend-less demos; every mock response that
+ * uses them is labelled DEMO DATA in the UI.
+ */
+const MOCK_MODEL_INPUTS: Record<string, number> = {
+  total_precipitation_24hr: 0.01,
+  '2m_temperature': 298,
+  mean_sea_level_pressure: 100500,
+  '10m_u_component_of_wind': 4.0,
+  '10m_v_component_of_wind': -1.5,
+  specific_humidity_850: 0.014,
+  geopotential_500: 57500,
+  vertical_velocity_500: -0.2,
+  bust_pattern_similarity: 0.35,
+};
 
 export async function getHealth(): Promise<HealthStatus> {
   if (API_MODE === 'mock') {
@@ -173,13 +207,61 @@ export async function getLocationDetail(lat: number, lon: number, day: number): 
       longitude: lon,
       day,
       lead_hours: day * 24,
-      model_inputs: { total_precipitation_24hr: 0.01, '2m_temperature': 298, mean_sea_level_pressure: 100500, '10m_u_component_of_wind': 4.0, '10m_v_component_of_wind': -1.5, specific_humidity_850: 0.014, geopotential_500: 57500, vertical_velocity_500: -0.2 },
+      model_inputs: MOCK_MODEL_INPUTS,
       bust_probability: pred.bust_probability,
       confidence: pred.confidence,
       confidence_level: pred.confidence_level,
+      derivation: {
+        method: 'inverse_distance_interpolation_of_model_inputs',
+        source_cell: 'DEMO',
+        distance_km: 0,
+        neighbour_count: 4,
+        note: 'DEMO DATA',
+      },
     };
   }
   const { data } = await apiClient.get(`/api/forecast/location?latitude=${lat}&longitude=${lon}&day=${day}`);
+  return data;
+}
+
+export async function getTimeSeries(
+  lat: number,
+  lon: number,
+  days?: number[]
+): Promise<TimeSeriesResponse> {
+  const dayParam = days?.length ? `&days=${days.join(',')}` : '';
+  if (API_MODE === 'mock') {
+    const span = days?.length ? days : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    return {
+      latitude: lat,
+      longitude: lon,
+      region: 'DEMO DATA',
+      model_version: 'demo',
+      derivation: {
+        method: 'inverse_distance_interpolation_of_model_inputs',
+        source_cell: 'DEMO',
+        distance_km: 0,
+        neighbour_count: 4,
+        note: 'DEMO DATA',
+      },
+      series: span.map((day) => {
+        const p = getMockPrediction({ latitude: lat, longitude: lon, lead_hours: day * 24 });
+        return {
+          day,
+          lead_hours: day * 24,
+          bust_probability: p.bust_probability,
+          confidence: p.confidence,
+          confidence_level: p.confidence_level,
+          // Lead time is a model input, so the vector is built per day to match
+          // what the live endpoint returns.
+          model_inputs: { ...MOCK_MODEL_INPUTS, lead_hours: day * 24 },
+        };
+      }),
+    };
+  }
+  const { data } = await apiClient.get(
+    `/api/forecast/time-series?latitude=${lat}&longitude=${lon}${dayParam}`
+  );
   return data;
 }
 
@@ -232,44 +314,45 @@ export async function getRiskAreas(day: number, threshold: number = 0.5): Promis
   return data;
 }
 
-export async function getLocalExplanation(features: Record<string, number>): Promise<LocalExplanation> {
+export async function getLocationExplanation(
+  lat: number,
+  lon: number,
+  day: number
+): Promise<LocationExplanation> {
   if (API_MODE === 'mock') {
-    const featureContribs = [
-      { feature: 'vertical_velocity_500', value: features.vertical_velocity_500 || 0, shap_value: 0.42, direction: 'increases_bust_risk', rank: 1 },
-      { feature: 'lead_hours', value: features.lead_hours || 96, shap_value: 0.35, direction: 'increases_bust_risk', rank: 2 },
-      { feature: 'specific_humidity_850', value: features.specific_humidity_850 || 0, shap_value: 0.28, direction: 'increases_bust_risk', rank: 3 },
-      { feature: 'total_precipitation_24hr', value: features.total_precipitation_24hr || 0, shap_value: 0.15, direction: 'increases_bust_risk', rank: 4 },
-      { feature: 'mean_sea_level_pressure', value: features.mean_sea_level_pressure || 0, shap_value: -0.12, direction: 'decreases_bust_risk', rank: 5 },
-      { feature: 'geopotential_500', value: features.geopotential_500 || 0, shap_value: 0.08, direction: 'increases_bust_risk', rank: 6 },
-      { feature: '2m_temperature', value: features['2m_temperature'] || 0, shap_value: -0.05, direction: 'decreases_bust_risk', rank: 7 },
-      { feature: '10m_u_component_of_wind', value: features['10m_u_component_of_wind'] || 0, shap_value: 0.03, direction: 'increases_bust_risk', rank: 8 },
-      { feature: '10m_v_component_of_wind', value: features['10m_v_component_of_wind'] || 0, shap_value: -0.02, direction: 'decreases_bust_risk', rank: 9 },
-      { feature: 'longitude', value: features.longitude || 0, shap_value: 0.01, direction: 'increases_bust_risk', rank: 10 },
-      { feature: 'latitude', value: features.latitude || 0, shap_value: -0.01, direction: 'decreases_bust_risk', rank: 11 },
-    ];
-    return { features: featureContribs, bust_probability: 0.72, confidence: 0.28 };
+    // Attribution requires the trained booster. Offline demo mode has no model,
+    // so it reports unavailability rather than an invented breakdown.
+    void lat;
+    void lon;
+    void day;
+    return {
+      available: false,
+      features: [],
+      latitude: lat,
+      longitude: lon,
+      day,
+      lead_hours: day * 24,
+      bust_probability: 0,
+      confidence: 0,
+      confidence_level: 'UNKNOWN',
+      model_inputs: MOCK_MODEL_INPUTS,
+      message: 'Attribution requires the trained model, which is not loaded in offline demo mode.',
+    };
   }
-  const { data } = await apiClient.post('/api/explanation/local', features);
+  const { data } = await apiClient.get(
+    `/api/explanation/location?latitude=${lat}&longitude=${lon}&day=${day}`
+  );
   return data;
 }
 
 export async function getGlobalExplanation(): Promise<GlobalExplanation> {
   if (API_MODE === 'mock') {
     return {
-      features: [
-        { feature: 'vertical_velocity_500', value: 0, shap_value: 0.35, direction: 'increases_bust_risk', rank: 1 },
-        { feature: 'lead_hours', value: 0, shap_value: 0.30, direction: 'increases_bust_risk', rank: 2 },
-        { feature: 'specific_humidity_850', value: 0, shap_value: 0.25, direction: 'increases_bust_risk', rank: 3 },
-        { feature: 'total_precipitation_24hr', value: 0, shap_value: 0.20, direction: 'increases_bust_risk', rank: 4 },
-        { feature: 'mean_sea_level_pressure', value: 0, shap_value: 0.15, direction: 'decreases_bust_risk', rank: 5 },
-        { feature: 'geopotential_500', value: 0, shap_value: 0.10, direction: 'increases_bust_risk', rank: 6 },
-        { feature: '2m_temperature', value: 0, shap_value: 0.08, direction: 'decreases_bust_risk', rank: 7 },
-        { feature: '10m_u_component_of_wind', value: 0, shap_value: 0.05, direction: 'increases_bust_risk', rank: 8 },
-        { feature: '10m_v_component_of_wind', value: 0, shap_value: 0.04, direction: 'decreases_bust_risk', rank: 9 },
-        { feature: 'longitude', value: 0, shap_value: 0.03, direction: 'increases_bust_risk', rank: 10 },
-        { feature: 'latitude', value: 0, shap_value: 0.02, direction: 'decreases_bust_risk', rank: 11 },
-      ],
-      model_version: 'xgb-rainfall-bust-v1',
+      available: false,
+      features: [],
+      model_version: 'unavailable',
+      message:
+        'Global attribution requires the trained model, which is not loaded in offline demo mode.',
     };
   }
   const { data } = await apiClient.get('/api/explanation/global');
@@ -278,46 +361,80 @@ export async function getGlobalExplanation(): Promise<GlobalExplanation> {
 
 export async function getVerification(): Promise<VerificationResponse> {
   if (API_MODE === 'mock') {
+    // No forecast/observation archive exists for this prototype, so mock mode
+    // reports the same unavailable state as the backend rather than inventing
+    // measurement pairs.
     return {
-      available: true,
-      results: [
-        { latitude: 19.0760, longitude: 73.0000, lead_hours: 96, day: 4, forecast_rainfall: 48.2, reference_rainfall: 92.5, absolute_error: 44.3, bust_threshold: 30.0, bust_status: true },
-        { latitude: 25.3125, longitude: 84.3750, lead_hours: 96, day: 4, forecast_rainfall: 24.0, reference_rainfall: 68.4, absolute_error: 44.4, bust_threshold: 25.0, bust_status: true },
-        { latitude: 19.6875, longitude: 85.0000, lead_hours: 96, day: 4, forecast_rainfall: 38.2, reference_rainfall: 81.0, absolute_error: 42.8, bust_threshold: 25.0, bust_status: true },
-        { latitude: 25.5000, longitude: 91.5000, lead_hours: 96, day: 4, forecast_rainfall: 65.0, reference_rainfall: 138.5, absolute_error: 73.5, bust_threshold: 35.0, bust_status: true },
-        { latitude: 14.8150, longitude: 74.1300, lead_hours: 96, day: 4, forecast_rainfall: 22.7, reference_rainfall: 58.2, absolute_error: 35.5, bust_threshold: 25.0, bust_status: true },
-        { latitude: 30.3165, longitude: 78.0322, lead_hours: 96, day: 4, forecast_rainfall: 32.0, reference_rainfall: 41.5, absolute_error: 9.5, bust_threshold: 25.0, bust_status: false },
-        { latitude: 30.9375, longitude: 75.3412, lead_hours: 96, day: 4, forecast_rainfall: 8.4, reference_rainfall: 12.1, absolute_error: 3.7, bust_threshold: 20.0, bust_status: false },
-        { latitude: 25.3125, longitude: 72.8000, lead_hours: 96, day: 4, forecast_rainfall: 3.2, reference_rainfall: 4.0, absolute_error: 0.8, bust_threshold: 15.0, bust_status: false },
-        { latitude: 14.4670, longitude: 78.8240, lead_hours: 96, day: 4, forecast_rainfall: 9.2, reference_rainfall: 14.5, absolute_error: 5.3, bust_threshold: 20.0, bust_status: false },
-        { latitude: 8.5241, longitude: 77.8500, lead_hours: 96, day: 4, forecast_rainfall: 12.8, reference_rainfall: 16.0, absolute_error: 3.2, bust_threshold: 20.0, bust_status: false },
-        { latitude: 27.5861, longitude: 92.0000, lead_hours: 96, day: 4, forecast_rainfall: 18.0, reference_rainfall: 24.2, absolute_error: 6.2, bust_threshold: 25.0, bust_status: false },
-        { latitude: 34.1526, longitude: 77.5771, lead_hours: 96, day: 4, forecast_rainfall: 2.0, reference_rainfall: 2.8, absolute_error: 0.8, bust_threshold: 15.0, bust_status: false },
-      ],
-      message: 'Real verification comparison online: Evaluating NCMRWF/ECMWF Medium-Range Forecast vs Ground Truth Observations.',
+      available: false,
+      results: [],
+      message:
+        'No verification archive is attached to this prototype, so no forecast-versus-observation comparison can be shown.',
     };
   }
   const { data } = await apiClient.get('/api/verification');
   return data;
 }
 
+/**
+ * Model identity as reported by the backend: version, feature count and the
+ * exact names it reads. Read from the loaded artifact rather than restated in
+ * the client, so the UI cannot drift from the model that is actually running.
+ */
+export async function getModelInfo(): Promise<ModelInfo> {
+  if (API_MODE === 'mock') {
+    // Nothing is loaded offline, so no version or artifact facts are claimed.
+    return {
+      model_version: 'not loaded in mock mode',
+      model_type: 'XGBoost classifier, sigmoid calibration',
+      feature_count: 0,
+      features: [],
+      is_ready: false,
+      calibration_loaded: false,
+      shap_available: false,
+      environment: 'mock',
+    };
+  }
+  const { data } = await apiClient.get('/api/model-info');
+  return data;
+}
+
 export async function getModelPerformance(): Promise<ModelPerformance> {
   if (API_MODE === 'mock') {
+    // The September 2019 figures are a static transcription of the notebook's own
+    // printed output, so they are readable offline. The loaded booster's own
+    // metrics cannot be: there is no model in mock mode, so that block reports
+    // nothing measured rather than a plausible placeholder.
     return {
-      model_name: 'Forecast Bust Detector',
-      model_type: 'XGBoost + Sigmoid Calibration',
-      test_period: 'September 2019',
-      roc_auc: 0.868,
-      pr_auc: 0.392,
-      mcc: 0.349,
-      accuracy: 0.86,
-      brier_raw: 0.106,
-      brier_calibrated: 0.0466,
-      model_version: 'xgb-rainfall-bust-v1',
-      training_period: 'June-July 2019',
-      validation_period: 'August 2019',
-      features: ['total_precipitation_24hr', '2m_temperature', 'mean_sea_level_pressure', '10m_u_component_of_wind', '10m_v_component_of_wind', 'specific_humidity_850', 'geopotential_500', 'vertical_velocity_500', 'longitude', 'latitude', 'lead_hours'],
-      confusion_matrix: { true_negatives: 54511, false_positives: 8074, false_negatives: 1327, true_positives: 2688 },
+      model_version: 'not loaded in mock mode',
+      model_type: 'XGBoost classifier, sigmoid calibration',
+      feature_count: evaluation.held_out_test_metrics ? evaluation.feature_count : 0,
+      features: evaluation.feature_columns ?? [],
+      hyperparameters: {},
+      held_out_test_set: evaluation.held_out_test_metrics ?? null,
+      served_artifact: {
+        label: 'Data the loaded booster was fitted on',
+        n_samples: null,
+        roc_auc: null,
+        pr_auc: null,
+        mcc: null,
+        accuracy: null,
+        brier_raw: null,
+        brier_calibrated: null,
+        confusion_matrix: null,
+        note:
+          'These figures require the trained booster, which is not loaded in offline demo mode.',
+      },
+      splits: evaluation.splits ?? null,
+      threshold_sweep: evaluation.threshold_sweep ?? null,
+      confidence_bands: {
+        high: 0.7,
+        moderate: 0.4,
+        note:
+          'Display convention for this prototype, not a tuned cut-off. HIGH confidence at or above 0.70, MODERATE at or above 0.40, LOW below 0.40, with confidence = 1 - bust probability.',
+      },
+      scope:
+        'Rainfall forecast bust detection only. The model estimates the probability that a medium-range accumulated rainfall forecast will miss its target by more than its error tolerance. It does not detect cyclones, temperature errors, pressure errors or any other forecast variable.',
+      research_only: true,
     };
   }
   const { data } = await apiClient.get('/api/model-performance');
@@ -326,174 +443,16 @@ export async function getModelPerformance(): Promise<ModelPerformance> {
 
 export async function getHistoricalEvents(): Promise<HistoricalEventsResponse> {
   if (API_MODE === 'mock') {
+    // No curated case archive exists for this prototype. Inventing event rows
+    // here would put forecast and observed rainfall figures on screen that were
+    // never measured, so mock mode matches the backend and reports nothing.
     return {
-      available: true,
-      total_events: 8,
-      critical_events: 6,
-      detection_rate: '87.5%',
-      source: 'MoES / IMD Monsoon Reports & NCMRWF Case Archive',
-      results: [
-        {
-          event_id: 'EVT-2023-HP',
-          name: '2023 Himachal Pradesh Flash Floods',
-          date: 'July 9–11, 2023',
-          region: 'Kullu, Mandi & Beas Basin',
-          state: 'Himachal Pradesh',
-          latitude: 31.95,
-          longitude: 77.10,
-          forecast_rainfall_mm: 78.5,
-          observed_rainfall_mm: 224.2,
-          absolute_error_mm: 145.7,
-          lead_days: 4,
-          model_predicted_bust: true,
-          model_bust_probability: 0.88,
-          confidence_level: 'LOW',
-          severity: 'CRITICAL',
-          synoptic_cause: 'Active Western Disturbance interacting with vigorous Monsoon Trough causing orographic locking over Beas basin',
-          nwp_model: 'NCMRWF Unified Model (NCUM)',
-          impact: 'Unprecedented river surges, highway washouts, and flash flooding across Himachal Pradesh',
-        },
-        {
-          event_id: 'EVT-2021-TAUKTAE',
-          name: '2021 Cyclone Tauktae Landfall',
-          date: 'May 17–18, 2021',
-          region: 'Saurashtra Coast & Diu',
-          state: 'Gujarat',
-          latitude: 20.80,
-          longitude: 71.20,
-          forecast_rainfall_mm: 65.0,
-          observed_rainfall_mm: 215.4,
-          absolute_error_mm: 150.4,
-          lead_days: 5,
-          model_predicted_bust: true,
-          model_bust_probability: 0.92,
-          confidence_level: 'LOW',
-          severity: 'CRITICAL',
-          synoptic_cause: 'Rapid intensification over anomalously warm Arabian Sea (SST > 31°C) with gale-force spiraling bands',
-          nwp_model: 'ECMWF IFS / GFS',
-          impact: 'Extreme coastal gale gusts up to 185 km/h, heavy storm surge, and power grid collapse in Saurashtra',
-        },
-        {
-          event_id: 'EVT-2020-AMPHAN',
-          name: '2020 Super Cyclone Amphan',
-          date: 'May 20, 2020',
-          region: 'Sundarbans & Kolkata',
-          state: 'West Bengal',
-          latitude: 22.30,
-          longitude: 88.30,
-          forecast_rainfall_mm: 92.0,
-          observed_rainfall_mm: 236.0,
-          absolute_error_mm: 144.0,
-          lead_days: 4,
-          model_predicted_bust: true,
-          model_bust_probability: 0.85,
-          confidence_level: 'LOW',
-          severity: 'CRITICAL',
-          synoptic_cause: 'Category 5 Super Cyclone eyewall moisture convergence colliding with southern Gangetic Delta',
-          nwp_model: 'NCUM-R / IMD GFS',
-          impact: 'Widespread urban inundation across Kolkata, saline embankment breaches in Sundarbans',
-        },
-        {
-          event_id: 'EVT-2019-FANI',
-          name: '2019 Cyclone Fani Coastal Strike',
-          date: 'May 3, 2019',
-          region: 'Puri & Coastal Plain',
-          state: 'Odisha',
-          latitude: 19.80,
-          longitude: 85.80,
-          forecast_rainfall_mm: 110.0,
-          observed_rainfall_mm: 248.5,
-          absolute_error_mm: 138.5,
-          lead_days: 3,
-          model_predicted_bust: true,
-          model_bust_probability: 0.81,
-          confidence_level: 'MODERATE',
-          severity: 'HIGH',
-          synoptic_cause: 'Extremely Severe Cyclonic Storm landfall band with localized mesoscale rainband stagnation',
-          nwp_model: 'NCMRWF Global Ensemble (NEPS)',
-          impact: 'Extensive structural destruction in Puri, high-velocity squall and localized flash flooding',
-        },
-        {
-          event_id: 'EVT-2018-KERALA',
-          name: '2018 Great Kerala Monsoon Deluge',
-          date: 'August 8–16, 2018',
-          region: 'Idukki & Wayanad Ghats',
-          state: 'Kerala',
-          latitude: 9.85,
-          longitude: 76.95,
-          forecast_rainfall_mm: 120.0,
-          observed_rainfall_mm: 310.8,
-          absolute_error_mm: 190.8,
-          lead_days: 5,
-          model_predicted_bust: true,
-          model_bust_probability: 0.94,
-          confidence_level: 'LOW',
-          severity: 'CRITICAL',
-          synoptic_cause: 'Persistent deep Bay of Bengal depression fueling strong Low-Level Jet into Western Ghats orography',
-          nwp_model: 'ECMWF ERA5 / NCUM',
-          impact: 'State-wide major reservoir spill, severe landslides, and century\'s worst flood emergency in Kerala',
-        },
-        {
-          event_id: 'EVT-2015-CHENNAI',
-          name: '2015 Chennai Record Deluge',
-          date: 'December 1–2, 2015',
-          region: 'Meenambakkam & Tambaram',
-          state: 'Tamil Nadu',
-          latitude: 13.00,
-          longitude: 80.20,
-          forecast_rainfall_mm: 85.0,
-          observed_rainfall_mm: 494.0,
-          absolute_error_mm: 409.0,
-          lead_days: 4,
-          model_predicted_bust: true,
-          model_bust_probability: 0.96,
-          confidence_level: 'LOW',
-          severity: 'CRITICAL',
-          synoptic_cause: 'Stalled coastal confluence zone driven by strong Northeast Monsoon easterly wave over warm ocean',
-          nwp_model: 'IMD Global / Regional NWP',
-          impact: 'Submerged Chennai airport runways, Adyar river overtopping, and major humanitarian disaster',
-        },
-        {
-          event_id: 'EVT-2005-MUMBAI',
-          name: '2005 Mumbai 944mm Cloudburst',
-          date: 'July 26, 2005',
-          region: 'Santacruz & Mithi Basin',
-          state: 'Maharashtra',
-          latitude: 19.08,
-          longitude: 72.88,
-          forecast_rainfall_mm: 45.0,
-          observed_rainfall_mm: 944.2,
-          absolute_error_mm: 899.2,
-          lead_days: 3,
-          model_predicted_bust: true,
-          model_bust_probability: 0.98,
-          confidence_level: 'LOW',
-          severity: 'CRITICAL',
-          synoptic_cause: 'Mesoscale offshore vortex trapped between Sahyadri mountains and monsoon Arabian surge',
-          nwp_model: 'Global Spectral Model',
-          impact: 'Historic 944 mm precipitation in 24 hours bringing India\'s financial capital to a standstill',
-        },
-        {
-          event_id: 'EVT-2023-SIKKIM',
-          name: '2023 Sikkim Teesta Flash Flood',
-          date: 'October 4, 2023',
-          region: 'Chungthang & Lachen Valley',
-          state: 'Sikkim',
-          latitude: 27.60,
-          longitude: 88.65,
-          forecast_rainfall_mm: 30.0,
-          observed_rainfall_mm: 142.0,
-          absolute_error_mm: 112.0,
-          lead_days: 2,
-          model_predicted_bust: true,
-          model_bust_probability: 0.89,
-          confidence_level: 'LOW',
-          severity: 'HIGH',
-          synoptic_cause: 'Sudden localized cloudburst trigger over South Lhonak glacial lake causing catastrophic dam breach',
-          nwp_model: 'NCUM Regional',
-          impact: 'Chungthang hydro dam breach, extensive infrastructure loss along Teesta river valley',
-        },
-      ],
+      available: false,
+      results: [],
+      total_events: 0,
+      critical_events: 0,
+      message:
+        'No case archive is attached to this prototype, so no historical bust events can be shown.',
     };
   }
   const { data } = await apiClient.get('/api/historical-events');

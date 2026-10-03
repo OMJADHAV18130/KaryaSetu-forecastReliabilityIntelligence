@@ -1,9 +1,18 @@
 """
-SHAP Explainer — Provides model explainability using SHAP values.
+SHAP Explainer — Model attribution via TreeSHAP.
+
+Both endpoints derive their numbers from the trained booster. When SHAP cannot be
+computed the explainer says so instead of substituting a plausible-looking
+importance table: an attribution that was never computed is indistinguishable
+from a real one once it reaches the screen.
+
+Global importance is the mean absolute SHAP value over the stored background
+sample. That quantity is a magnitude, so it carries no direction — direction is
+only meaningful for the local per-prediction breakdown.
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -17,183 +26,167 @@ class ShapExplainer:
     """
     SHAP-based model explainer.
 
-    Uses TreeExplainer for the XGBoost model to compute SHAP values
-    for both global and local explanations.
+    Uses TreeExplainer on the trained XGBoost booster for both global
+    importance and per-prediction attribution.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.model = model_loader.model
         self.background_data = model_loader.shap_background
         self.explainer = None
         self._initialized = False
+        self._unavailable_reason: Optional[str] = None
 
         if model_loader.model_loaded and model_loader.shap_background_loaded:
             self._initialize()
 
-    def _initialize(self):
-        """Initialize the SHAP TreeExplainer."""
+    def _initialize(self) -> None:
+        """Initialise the SHAP TreeExplainer, or record why it could not be."""
+        # The loader hands back a numpy array, which has no single truth value,
+        # so emptiness has to be tested on its shape.
+        if self.background_data is None or len(self.background_data) == 0:
+            self._unavailable_reason = (
+                "No background sample is stored alongside the model, so "
+                "attribution cannot be computed."
+            )
+            logger.warning(self._unavailable_reason)
+            return
+
         try:
             import shap
+
             self.explainer = shap.TreeExplainer(self.model)
             self._initialized = True
-            logger.info("SHAP TreeExplainer initialized")
+            logger.info("SHAP TreeExplainer initialised")
         except ImportError:
-            logger.warning("shap module not installed, SHAP explanations will use fallback")
-            self._initialized = False
-        except Exception as e:
-            logger.error(f"Failed to initialize SHAP explainer: {e}")
-            self._initialized = False
+            self._unavailable_reason = (
+                "The 'shap' package is not installed in this environment, so "
+                "attribution cannot be computed."
+            )
+            logger.warning(self._unavailable_reason)
+        except Exception as exc:
+            self._unavailable_reason = f"SHAP TreeExplainer failed to start: {exc}"
+            logger.error(self._unavailable_reason)
+
+    @property
+    def available(self) -> bool:
+        return self._initialized
+
+    @property
+    def unavailable_reason(self) -> Optional[str]:
+        return None if self._initialized else self._unavailable_reason
+
+    @property
+    def model_version(self) -> str:
+        return getattr(self.model, "model_version", "xgb-rainfall-bust-v2")
+
+    @property
+    def base_value(self) -> Optional[float]:
+        """
+        The model's average output in log-odds, i.e. SHAP's ``expected_value``.
+
+        Returned alongside a local breakdown so the attribution can be checked
+        rather than trusted: ``sigmoid(base_value + sum(shap_values))`` has to come
+        back to the probability shown on screen. Without it, the bars are a claim
+        the reader has no way to test.
+        """
+        if not self._initialized:
+            return None
+        try:
+            value = np.asarray(self.explainer.expected_value).reshape(-1)
+            return float(value[-1])
+        except Exception as exc:  # pragma: no cover - depends on the SHAP build
+            logger.warning(f"Could not read the SHAP base value: {exc}")
+            return None
+
+    def _vector(self, features: Dict[str, Any]) -> List[float]:
+        """Feature values in training order, as plain floats."""
+        return [float(features[col]) for col in FEATURE_COLUMNS]
+
+    def _shap_values(self, X: np.ndarray) -> np.ndarray:
+        """SHAP values as a (rows, features) array, normalising SHAP's shapes."""
+        values = self.explainer.shap_values(X)
+        if isinstance(values, list):
+            # Older SHAP releases return one array per class for binary output.
+            values = values[-1]
+        values = np.asarray(values)
+        # SHAP >= 0.45 returns (features, rows) for the new output format.
+        if values.ndim == 3:
+            values = values[:, :, -1]
+        if values.ndim == 2 and values.shape[0] != X.shape[0]:
+            values = values.T
+        return values
 
     def explain_local(self, features: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Explain a single prediction using SHAP values.
+        Attribute one prediction.
 
         Args:
-            features: Dictionary with all 11 model features
+            features: Dictionary with all model features, in training units
 
         Returns:
-            List of feature contributions sorted by absolute SHAP value
+            Contributions sorted by absolute SHAP value, descending. Empty when
+            SHAP is unavailable — check :attr:`available` first.
         """
         if not self._initialized:
-            return self._fallback_explanation(features)
+            return []
 
-        # Build feature vector
-        feature_vector = []
-        for col in FEATURE_COLUMNS:
-            feature_vector.append(float(features[col]))
+        vector = self._vector(features)
+        values = self._shap_values(np.array([vector]))
 
-        X = np.array([feature_vector])
+        contributions: List[Dict[str, Any]] = []
+        for index, column in enumerate(FEATURE_COLUMNS):
+            shap_value = float(values[0][index])
+            contributions.append(
+                {
+                    "feature": column,
+                    "value": vector[index],
+                    "shap_value": round(shap_value, 6),
+                    "direction": (
+                        "increases_bust_risk"
+                        if shap_value > 0
+                        else "decreases_bust_risk"
+                        if shap_value < 0
+                        else "neutral"
+                    ),
+                }
+            )
 
-        # Compute SHAP values
-        shap_values = self.explainer.shap_values(X)
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]  # For binary classification, take class 1
-
-        contributions = []
-        for i, col in enumerate(FEATURE_COLUMNS):
-            shap_val = float(shap_values[0][i])
-            contributions.append({
-                "feature": col,
-                "value": feature_vector[i],
-                "shap_value": round(shap_val, 6),
-                "direction": "increases_bust_risk" if shap_val > 0 else "decreases_bust_risk",
-            })
-
-        # Sort by absolute SHAP value (descending)
-        contributions.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
-
-        # Add rank
-        for i, c in enumerate(contributions):
-            c["rank"] = i + 1
-
+        contributions.sort(key=lambda c: abs(c["shap_value"]), reverse=True)
+        for position, contribution in enumerate(contributions):
+            contribution["rank"] = position + 1
         return contributions
 
     def explain_global(self, n_samples: int = 500) -> List[Dict[str, Any]]:
         """
-        Compute global feature importance using SHAP.
+        Global importance: mean absolute SHAP value per feature.
 
         Args:
-            n_samples: Number of background samples to use
+            n_samples: How many background rows to average over
 
         Returns:
-            List of features with mean absolute SHAP values
+            Features ordered by importance, descending. Empty when SHAP is
+            unavailable — check :attr:`available` first.
         """
         if not self._initialized:
-            return self._fallback_global_explanation()
+            return []
 
-        # Use background data
-        n = min(n_samples, len(self.background_data))
-        X_bg = self.background_data[:n]
+        rows = min(n_samples, len(self.background_data))
+        values = self._shap_values(np.asarray(self.background_data[:rows]))
+        mean_abs = np.mean(np.abs(values), axis=0)
 
-        # Compute SHAP values for background
-        shap_values = self.explainer.shap_values(X_bg)
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
-
-        # Mean absolute SHAP value per feature
-        mean_abs_shap = np.mean(np.abs(shap_values), axis=0)
-
-        contributions = []
-        for i, col in enumerate(FEATURE_COLUMNS):
-            val = round(float(mean_abs_shap[i]), 6)
-            contributions.append({
-                "feature": col,
-                "mean_abs_shap": val,
-                "shap_value": val,
-                "value": val,
-                "direction": "increases_bust_risk" if val > 0.05 else "decreases_bust_risk",
-                "importance_rank": 0,
+        contributions: List[Dict[str, Any]] = [
+            {
+                "feature": column,
+                "mean_abs_shap": round(float(mean_abs[index]), 6),
                 "rank": 0,
-            })
-
-        # Sort by importance
-        contributions.sort(key=lambda x: x["mean_abs_shap"], reverse=True)
-        for i, c in enumerate(contributions):
-            c["importance_rank"] = i + 1
-            c["rank"] = i + 1
-
+            }
+            for index, column in enumerate(FEATURE_COLUMNS)
+        ]
+        contributions.sort(key=lambda c: c["mean_abs_shap"], reverse=True)
+        for position, contribution in enumerate(contributions):
+            contribution["rank"] = position + 1
         return contributions
-
-    def _fallback_explanation(self, features: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Fallback explanation when SHAP is not available."""
-        logger.warning("SHAP not available, using fallback explanation")
-        # Use feature values to create a basic explanation
-        contributions = []
-        for col in FEATURE_COLUMNS:
-            val = float(features.get(col, 0))
-            # Simple heuristic for direction
-            if col == "lead_hours":
-                direction = "increases_bust_risk" if val > 96 else "decreases_bust_risk"
-            elif col == "vertical_velocity_500":
-                direction = "increases_bust_risk" if val < -0.2 else "decreases_bust_risk"
-            elif col == "total_precipitation_24hr":
-                direction = "increases_bust_risk" if val > 0.02 else "decreases_bust_risk"
-            elif col == "bust_pattern_similarity":
-                direction = "increases_bust_risk" if val > 0.65 else "decreases_bust_risk"
-            else:
-                direction = "neutral"
-            contributions.append({
-                "feature": col,
-                "value": val,
-                "shap_value": 0.0,
-                "direction": direction,
-            })
-        return contributions
-
-    def _fallback_global_explanation(self) -> List[Dict[str, Any]]:
-        """Fallback global explanation when SHAP is not available."""
-        logger.warning("SHAP not available, using fallback global explanation")
-        sample_importance = {
-            "lead_hours": 0.38,
-            "vertical_velocity_500": 0.32,
-            "bust_pattern_similarity": 0.28,
-            "specific_humidity_850": 0.26,
-            "total_precipitation_24hr": 0.21,
-            "mean_sea_level_pressure": 0.16,
-            "geopotential_500": 0.12,
-            "2m_temperature": 0.09,
-            "10m_u_component_of_wind": 0.06,
-            "10m_v_component_of_wind": 0.04,
-            "latitude": 0.02,
-            "longitude": 0.02,
-        }
-        res = []
-        for col in FEATURE_COLUMNS:
-            imp = sample_importance.get(col, 0.05)
-            res.append({
-                "feature": col,
-                "mean_abs_shap": imp,
-                "shap_value": imp,
-                "value": imp,
-                "direction": "increases_bust_risk" if imp >= 0.15 else "decreases_bust_risk",
-                "importance_rank": 0,
-                "rank": 0,
-            })
-        res.sort(key=lambda x: x["mean_abs_shap"], reverse=True)
-        for i, c in enumerate(res):
-            c["rank"] = i + 1
-            c["importance_rank"] = i + 1
-        return res
 
 
 # Global singleton instance
