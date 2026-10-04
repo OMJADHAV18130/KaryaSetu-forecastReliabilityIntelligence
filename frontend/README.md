@@ -117,7 +117,7 @@ scripts/
 | `/search` | Location Search | `Search.tsx` | Any of 723 districts, or a typed coordinate |
 | `/time-series` | Time Series | `TimeSeries.tsx` | Ten lead days at a coordinate, with per-day inputs |
 | `/bust-detection` | Bust Detection | `BustDetection.tsx` | Ranked grid cells above the threshold + clustered areas |
-| `/verification` | Verification | `Verification.tsx` | Held-out test-set skill: confusion matrix, scores, threshold sweep |
+| `/verification` | Verification | `Verification.tsx` | Prose status page: what was verified, and what needs observations |
 | `/explainability` | Explainability | `Explainability.tsx` | Mean \|SHAP\| globally; per-coordinate attribution |
 | `/settings` | Settings | `Settings.tsx` | Theme only |
 
@@ -227,17 +227,20 @@ September 2019 evaluation on data the model never saw, the second is what the
 booster this API loaded measures on its own fitting data. No page renders either.
 
 **`/api/verification`** returns two halves. `model_skill` is the measured
-evidence the Verification page renders: the September 2019 held-out confusion
-matrix, ROC-AUC / PR-AUC / MCC / Brier, and the 17-point threshold sweep. It is
-served unchanged from `backend/models/notebook_evaluation.json` and carries a
-`provenance` string, because a fixed historical evaluation must not read as a live
-operational statistic. `archive` returns `available: false`, a reason, and
+evidence: the September 2019 held-out confusion matrix, ROC-AUC / PR-AUC / MCC /
+Brier, and the 17-point threshold sweep. It is served unchanged from
+`backend/models/notebook_evaluation.json` and carries a `provenance` string,
+because a fixed historical evaluation must not read as a live operational
+statistic. `archive` returns `available: false`, a reason, and
 `expected_record_shape`: no forecast/observation archive is configured in this
 deployment, and an empty table would read as "nothing happened" rather than
 "nothing to show". `/api/historical-events` behaves the same way.
 
-The peak the chart marks is computed from the served rows with a plain `reduce`,
-not hard-coded, so it cannot drift from the data behind it.
+The Verification page reads only `available` and `message` from `model_skill`. The
+figures themselves are written up in the project README rather than rendered, so
+there is one copy of them instead of two that could drift apart. That is also why
+the frontend `ModelSkill` type declares only those two fields; see the backend
+schema for the full response shape.
 
 ---
 

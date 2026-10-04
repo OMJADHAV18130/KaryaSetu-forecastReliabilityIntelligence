@@ -55,12 +55,13 @@ def test_unavailable_messages_are_not_placeholder_numbers(client):
 
 def test_verification_serves_real_measured_skill(client, notebook_evaluation):
     """
-    The Verification page must show evidence that was actually measured.
+    ``/api/verification`` must serve evidence that was actually measured.
 
-    This is the guard against the page going back to being empty. Every figure
-    here is compared against the transcribed notebook record, so a number that
-    drifts from what the notebook printed fails the build rather than reaching
-    the screen.
+    The UI renders none of these figures - they are documented in the project
+    README instead, so there is one copy rather than two that could drift. That
+    makes this the only check on them, so every value is compared against the
+    transcribed notebook record: a figure that drifts from what the notebook
+    printed fails the build rather than reaching an API consumer.
     """
     skill = client.get("/api/verification").json()["model_skill"]
     record = notebook_evaluation["held_out_test_metrics"]
@@ -106,7 +107,7 @@ def test_reported_precision_and_recall_follow_from_the_confusion_matrix(client):
 
 
 def test_threshold_sweep_f1_peak_is_where_the_notebook_says(client, notebook_evaluation):
-    """The chart's highlighted peak must be the real peak, not a tidy-looking one."""
+    """The sweep's best F1 must be a real interior maximum, not a tidy-looking one."""
     skill = client.get("/api/verification").json()["model_skill"]
     rows = skill["threshold_sweep"]["rows"]
 

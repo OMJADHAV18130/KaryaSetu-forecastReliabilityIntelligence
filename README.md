@@ -391,13 +391,19 @@ importance table.
 
 Returns two halves that are deliberately kept apart.
 
-`model_skill` is the measured verification the prototype can show: the confusion
-matrix, ROC-AUC, PR-AUC, MCC, Brier before and after calibration, and the 17-point
-threshold sweep, all from the September 2019 held-out test set. Every figure is
-transcribed from the notebook's own printed output into
-`models/notebook_evaluation.json` and is served unchanged. It carries a
-`provenance` string, because these are recorded results from a fixed historical
-evaluation and must not be read as live operational statistics.
+`model_skill` is the measured verification: the confusion matrix, ROC-AUC, PR-AUC,
+MCC, Brier before and after calibration, and the 17-point threshold sweep, all
+from the September 2019 held-out test set. Every figure is transcribed from the
+notebook's own printed output into `models/notebook_evaluation.json` and is served
+unchanged. It carries a `provenance` string, because these are recorded results
+from a fixed historical evaluation and must not be read as live operational
+statistics.
+
+The Verification page does **not** render those figures. They are written up in the
+[Performance Metrics](#performance-metrics-september-2019-test-set) section below,
+so there is one copy of them rather than two that could drift apart. The page
+states what was verified and how, and leaves the numbers to the documents that own
+them.
 
 `archive` is the per-location forecast-versus-observation comparison. It returns
 `available: false` with a message and the `expected_record_shape` it would need,
@@ -696,13 +702,13 @@ Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → 
 6. **Explainability** — the mean |SHAP| ranking across the background sample, then
    the per-coordinate diverging bars for the same point, with direction and the
    checksum that proves the bars rebuild the number above them
-7. **Verification** — the real evidence: the September 2019 held-out confusion
-   matrix, the discrimination and calibration scores, and the threshold sweep with
-   its F1 peak marked. The provenance banner sits above all of it, because these
-   are recorded results from a fixed historical evaluation rather than live
-   operational statistics. The per-location forecast-vs-observation half below it
-   says DATA NOT AVAILABLE and explains the record shape it would need — that part
-   is the intended result, not a stub
+7. **Verification** — separates the two questions. Does the model flag busts well?
+   Answered once, offline, on a held-out September 2019 split; the figures are in
+   [Performance Metrics](#performance-metrics-september-2019-test-set) and are not
+   repeated on the page, so there is one copy of them rather than two. Did *this*
+   forecast bust? Needs an observation, so the per-location half says DATA NOT
+   AVAILABLE and explains the record shape it would need — that part is the
+   intended result, not a stub
 8. **Settings** — toggle the theme; light is the default, the map canvas stays dark
    in both
 

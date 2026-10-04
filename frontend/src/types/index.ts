@@ -170,56 +170,17 @@ export interface VerificationArchive {
   reliable_count?: number;
 }
 
-export interface ConfusionMatrix {
-  true_negatives: number | null;
-  false_positives: number | null;
-  false_negatives: number | null;
-  true_positives: number | null;
-}
-
-/** One operating point from the training notebook's threshold sweep. */
-export interface ThresholdSweepRow {
-  threshold: number;
-  precision: number;
-  recall: number;
-  f1: number;
-}
-
-export interface ThresholdSweep {
-  label?: string | null;
-  note?: string | null;
-  rows: ThresholdSweepRow[];
-}
-
 /**
  * Measured skill of the tuned model on the September 2019 held-out test set.
  *
- * Every figure was produced by the training notebook against reanalysis truth
- * the model was not fitted or tuned on. `provenance` carries that distinction
- * onto the screen: these are recorded results from a fixed historical
- * evaluation, not live operational statistics.
+ * Only `available` and `message` are declared here, because that is all the UI
+ * consumes. The endpoint also serves the confusion matrix, discrimination and
+ * calibration scores, and the threshold sweep; those are published in the project
+ * README instead of being rendered, so there is one copy of them rather than two
+ * that could drift apart. See the backend `ModelSkill` schema for the full shape.
  */
 export interface ModelSkill {
   available: boolean;
-  label?: string | null;
-  provenance?: string | null;
-  n_samples?: number | null;
-  n_bust?: number | null;
-  operating_threshold?: number | null;
-  calibration_method?: string | null;
-  confusion_matrix?: ConfusionMatrix;
-  classification_report?: Record<string, number>;
-  roc_auc?: number | null;
-  pr_auc?: number | null;
-  mcc?: number | null;
-  brier_raw?: number | null;
-  brier_calibrated?: number | null;
-  precision_at_threshold?: number | null;
-  recall_at_threshold?: number | null;
-  threshold_sweep?: ThresholdSweep | null;
-  source_notebook?: string | null;
-  source_cells?: (number | string)[] | null;
-  notes?: string[] | null;
   message?: string | null;
 }
 
