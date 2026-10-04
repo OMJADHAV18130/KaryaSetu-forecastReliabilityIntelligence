@@ -64,8 +64,12 @@
     }
   },
   "unimplemented_features": {
-    "_note": "Specified in the design but absent from the booster. These have no weight in the 200-tree artifact, were never computed, and appear nowhere in the training notebook. They cannot simply be switched on: the booster declares num_feature = 12 and raises on a 19-column input, and their definitions are unspecified (a gradient needs a spatial neighbourhood, a tendency needs a forecast-to-forecast step). Serving them requires a refit on the WeatherBench2 splits, after which the transcribed September 2019 figures must be re-derived because they describe the earlier 11-feature notebook run.",
+    "_note": "Specified in the design but absent from the booster. These have no weight in the 200-tree artifact, were never computed, and appear nowhere in the training notebook. The two groups are blocked for different reasons, both verified rather than assumed. SHARED, all 7: the booster declares num_feature = 12 and raises on a 19-column input, so none has a weight to contribute. SPATIAL GRADIENTS (3), a refit WOULD clear these: the WeatherBench2 stores are 64x32_equiangular_conservative, i.e. 5.625 deg in both longitude and latitude (360/64 and 180/32), and the India domain of 8-37N, 68-98E spans about 5x5 cells, which is exactly the grid held in map_service. The served grid is the store's native spacing, not a coarsening of it, so differencing neighbouring cells is at the finest resolution this dataset offers (~600 km); no finer one exists without a different dataset. Missing: the notebook never computes them and no spatial operator is recorded. LEAD-TIME TENDENCIES (4), a refit CANNOT clear these: a tendency is a difference between two forecast cycles for the same valid time and needs two init_times, but the only store the notebook opens is hres/2016-2022-0012-..., whose init_time is pinned to 0012 UTC at one cycle per day, so there is no second forecast to difference against. In the served app the same four are degenerate even in principle: a profile holds one scalar per variable per cell with no time or cycle dimension, so differencing across lead days yields identically 0.0 and XGBoost would never split on a constant. Serving any of them also requires re-deriving the transcribed September 2019 figures, which describe the earlier 11-feature notebook run.",
     "count": 7,
+    "cleared_by_refit": {
+      "spatial_gradient": "yes - computable at the store's native 5.625 deg spacing",
+      "lead_time_tendency": "no - unreachable from a single-cycle dataset"
+    },
     "names": [
       "mslp_gradient",
       "temp_gradient",
@@ -75,6 +79,17 @@
       "geopotential_500_tendency",
       "total_precipitation_24hr_tendency"
     ]
+  },
+  "provenance_gaps": {
+    "_note": "Served features whose derivation is not recorded anywhere. Distinguished from unimplemented_features: these are inputs the booster actively uses, so an undocumented origin affects predictions rather than just schema completeness.",
+    "bust_pattern_similarity": {
+      "status": "UNDOCUMENTED",
+      "in_notebook_feature_cols": false,
+      "notebook_contains_cosine_or_similarity": false,
+      "served_as": "a single scalar stored per grid cell in map_service.GRID_METEOROLOGY",
+      "note": "The only one of the 12 served features absent from every feature_cols list in the notebook, and the notebook has no cosine, no similarity and no trajectory computation of any kind. The design's description - cosine similarity of the full Day 1-10 trajectory to historical bust archetypes - is therefore not implemented anywhere in the recorded source. It is not computed from a Day 1-10 series at serving time either, because no such series is held. By mean absolute SHAP it is the second most influential served input (1.017, behind vertical_velocity_500 at 1.592), so this gap affects predictions.",
+      "flag": "BUST_PATTERN_SIMILARITY_PROVENANCE"
+    }
   },
   "hyperparameters": {
     "learning_rate": 0.02,

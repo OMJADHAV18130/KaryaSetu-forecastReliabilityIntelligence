@@ -170,6 +170,21 @@ absolute SHAP it is the **second most influential input** to the served model
 (1.017, behind `vertical_velocity_500` at 1.592). Dropping it to reach the
 notebook's 11 features would remove an input the deployed artifact genuinely uses.
 
+> **Undocumented provenance.** Of the 12 served features this is the only one
+> absent from every `feature_cols` list in the notebook, and the notebook contains
+> no `cosine`, no `similarity` and no trajectory computation at all — so the
+> design's description ("cosine similarity of the full Day 1–10 trajectory to
+> historical bust archetypes") is not something the notebook implements. At serving
+> time the value is a single scalar stored per grid cell in
+> `map_service.GRID_METEOROLOGY`, not computed from a Day 1–10 series, because no
+> such series is held.
+>
+> This is a live honesty gap rather than a cosmetic one, and it matters more than
+> the 7 absent features below: unlike them, this input demonstrably affects
+> predictions. It is flagged as `BUST_PATTERN_SIMILARITY_PROVENANCE = "UNDOCUMENTED"`
+> in `feature_schema.py` and pinned by a test. Its origin should be established
+> before it is relied on further.
+
 #### Designed but not served
 
 The design groups its 19 inputs as 8 raw meteorological variables, 3 spatial
@@ -177,23 +192,51 @@ gradients, 4 lead-time tendencies, 1 time-series pattern feature, and 3 structur
 features. Everything is recorded in `backend/models/feature_schema.json` under
 `designed_feature_spec`. These 7 are specified but **not implemented**:
 
-| Feature | Group | Purpose |
+| Feature | Group | Cleared by a refit? |
 |---|---|---|
-| `mslp_gradient` | spatial gradient | Pressure gradient — dynamically active regions |
-| `temp_gradient` | spatial gradient | Temperature gradient — frontal boundaries |
-| `geo500_gradient` | spatial gradient | Mid-level flow gradient — steering-flow intensity |
-| `mean_sea_level_pressure_tendency` | lead-time tendency | Pressure evolution rate forecast-to-forecast |
-| `2m_temperature_tendency` | lead-time tendency | Temperature evolution rate |
-| `geopotential_500_tendency` | lead-time tendency | Steering-flow evolution rate |
-| `total_precipitation_24hr_tendency` | lead-time tendency | Rainfall forecast evolution rate |
+| `mslp_gradient` | spatial gradient | Yes — computable |
+| `temp_gradient` | spatial gradient | Yes — computable |
+| `geo500_gradient` | spatial gradient | Yes — computable |
+| `mean_sea_level_pressure_tendency` | lead-time tendency | **No** — unreachable from this data |
+| `2m_temperature_tendency` | lead-time tendency | **No** — unreachable from this data |
+| `geopotential_500_tendency` | lead-time tendency | **No** — unreachable from this data |
+| `total_precipitation_24hr_tendency` | lead-time tendency | **No** — unreachable from this data |
 
 They appear nowhere in the training notebook or in `train_model.py`, and have no
-weight in the 200-tree artifact. They cannot simply be switched on:
+weight in the 200-tree artifact. The two groups are blocked for **different**
+reasons, and both were verified rather than assumed.
 
-1. The booster declares `num_feature = 12` and raises on a 19-column input.
-2. Their definitions are unspecified. A gradient needs a spatial neighbourhood and
-   a tendency needs a forecast-to-forecast step; neither is recorded anywhere, so
-   computing them would mean guessing at 7 of the 19 model inputs.
+**All 7** — the booster declares `num_feature = 12` and raises on a 19-column
+input, so none of them has a weight to contribute.
+
+**The 3 gradients** are computable, and a refit would clear them. The
+WeatherBench2 stores are `64x32_equiangular_conservative`, which is 5.625° in both
+longitude and latitude (360/64 and 180/32). The India domain of 8–37°N, 68–98°E
+therefore spans about 5×5 cells — which is exactly the grid held in
+`map_service`. The served grid *is* the store's native spacing, not a coarsening
+of it, so differencing across neighbouring cells is at the finest resolution this
+dataset offers (~600 km). That is coarse in absolute terms but no finer one is
+available without a different dataset. What is missing is that the notebook never
+computes them and no spatial operator is recorded.
+
+**The 4 tendencies cannot be reached at all.** A tendency is a difference between
+two forecast cycles for the same valid time, which requires two `init_time`s. The
+only store the notebook opens is `hres/2016-2022-0012-…`, whose `init_time` is
+pinned to 0012 UTC — exactly one cycle per day. There is no second forecast
+anywhere in the data to difference against.
+
+In the served application the same four are degenerate even in principle. A
+meteorology profile holds one scalar per variable per cell with no time or cycle
+dimension, so differencing across lead days returns identically `0.0`:
+
+```
+mslp across lead days : [100349.99, 100349.99, ... ] (all ten days)
+all differences       : [0.0]
+```
+
+XGBoost never splits on a constant, so such a column would carry no information
+while appearing in the schema as a plausible name. `test_feature_contract.py`
+asserts this, so it is a verified property rather than a claim.
 
 Serving them needs a refit on the WeatherBench2 splits — which additionally voids
 the [September 2019 figures](#performance-metrics-september-2019-test-set) below,
@@ -803,7 +846,7 @@ the notebook evaluated — see [Which evaluation is which](#which-evaluation-is-
 
 ```bash
 cd backend
-pytest tests/          # 112 tests
+pytest tests/          # 119 tests
 ```
 
 ```bash
@@ -821,7 +864,7 @@ could not check that.
 | `tests/conftest.py` | Shared fixtures, plus a recursive NaN/Inf check over every response |
 | `tests/test_probability_contract.py` | `confidence = 1 - bust_probability`, `day = lead_hours / 24`, band boundaries, determinism, per-day model inputs |
 | `tests/test_validation.py` | NaN, infinity, out-of-domain and missing features are all rejected; a 422 never carries a number |
-| `tests/test_feature_contract.py` | Served feature width equals the booster's declared `num_feature`; the design spec still totals 19; 12 served + 7 unserved = 19 with nothing unaccounted for; the 7 unserved names are still absent from the notebook; the JSON artifact records the same shortfall |
+| `tests/test_feature_contract.py` | Served feature width equals the booster's declared `num_feature`; the design spec still totals 19; 12 served + 7 unserved = 19 with nothing unaccounted for; the 7 unserved names are still absent from the notebook; the lead-time tendencies are verified degenerate (identically `0.0`) rather than assumed unserved; the served grid is asserted to be the store's native 5.625° spacing; the JSON records the same shortfall and the `bust_pattern_similarity` provenance gap |
 | `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability; `/api/verification` serves real measured skill and never labels it live |
 | `tests/test_map_scoring.py` | Batch scoring equals single-point scoring coordinate by coordinate; values actually vary with position; NaN, infinity, out-of-domain, empty, oversized and bad-day requests are all rejected; `predict_matrix` matches `predict` row by row |
 

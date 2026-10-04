@@ -35,6 +35,27 @@ FEATURE_COLUMNS: List[str] = [
     "bust_pattern_similarity",
 ]
 
+# ── Undocumented provenance of bust_pattern_similarity ───────────────────────
+# Recorded because it is a live honesty gap, not a cosmetic one.
+#
+# Of the 12 served features, this is the only one absent from every
+# ``feature_cols`` list in the training notebook (all five lists are the same
+# 11 features, which do not include it). The notebook contains no ``cosine``,
+# no ``similarity`` and no trajectory computation of any kind, so the design's
+# description - "cosine similarity of the full Day 1-10 trajectory to historical
+# bust archetypes" - is not something the notebook implements.
+#
+# At serving time the value is a single scalar stored per grid cell in
+# map_service.GRID_METEOROLOGY. It is not computed from a Day 1-10 series,
+# because no such series is held: a profile carries one value per variable per
+# cell and does not vary with lead day.
+#
+# This matters more than the 7 absent features, because unlike them this input
+# demonstrably affects predictions - it is the second most influential feature
+# by mean absolute SHAP (1.017, behind vertical_velocity_500 at 1.592). Its
+# origin should be established and documented before it is relied on further.
+BUST_PATTERN_SIMILARITY_PROVENANCE = "UNDOCUMENTED"
+
 # ── The 19-feature design contract ───────────────────────────────────────────
 # Recorded as specified. Groups are listed in the design's own order, which is
 # NOT the served order: it puts longitude before latitude and places
@@ -93,26 +114,49 @@ DESIGNED_FEATURES: List[str] = [
     for name in group["features"]
 ]
 
-# ── Features specified in the design but absent from the served booster ──────
-# These 7 have no weight in the 200-tree artifact, were never computed, and
-# appear nowhere in the training notebook. They are named here so the shortfall
-# stays visible instead of being silently forgotten.
+# ── Why the 7 cannot simply be switched on ──────────────────────────────────
+# The two groups are blocked for *different* reasons, and both were verified
+# rather than assumed. They are kept apart because a refit clears one and not
+# the other.
 #
-# Two independent reasons they cannot simply be switched on:
-#   1. The booster declares num_feature = 12 and raises on a 19-column input.
-#   2. Their definitions are unspecified - a gradient needs a spatial
-#      neighbourhood and a tendency needs a forecast-to-forecast step, and
-#      neither is recorded anywhere. Computing them would mean guessing at
-#      7 of the 19 model inputs.
+# Shared blocker, affecting all 7: the booster declares num_feature = 12 and
+# raises on a 19-column input, so none of them has a weight to contribute.
 #
-# Serving them requires a refit on the WeatherBench2 splits, after which the
-# transcribed September 2019 figures must be re-derived because they describe
-# the earlier 11-feature notebook run.
+# Spatial gradients (3) - computable, and a refit WOULD clear these. The
+# WeatherBench2 stores are 64x32 equiangular conservative, which is 5.625 deg
+# in both longitude and latitude (360/64 and 180/32). The India domain of
+# 8-37N, 68-98E therefore spans about 5x5 cells, and that is exactly the grid
+# held in map_service - the served grid is the store's native spacing, not a
+# coarsening of it. So a gradient differenced across neighbouring cells is at
+# the finest resolution this dataset offers, roughly 600 km. That is coarse in
+# absolute terms but it is the source resolution, and no finer one is available
+# without a different dataset. The blocker is that the notebook never computes
+# them and no operator is recorded, not the concept.
+#
+# Lead-time tendencies (4) - a refit CANNOT clear these. A tendency is a
+# difference between two forecast cycles for the same valid time, which needs
+# two init_times. The only store the notebook opens is
+# "hres/2016-2022-0012-...", whose init_time is pinned to 0012 UTC: exactly one
+# cycle per day. There is no second forecast anywhere in the data to difference
+# against, so these are unreachable from this dataset by any means.
+#
+# In the served application the same four are degenerate even in principle. A
+# meteorology profile holds one scalar per variable per cell with no time or
+# cycle dimension, so differencing across lead days yields identically 0.0 for
+# every row (see tests/test_feature_contract.py, which asserts this). XGBoost
+# never splits on a constant, so such a column would carry no information while
+# appearing in the schema as a plausible name.
+#
+# Serving any of them also requires re-deriving the transcribed September 2019
+# figures, which describe the earlier 11-feature notebook run.
 UNIMPLEMENTED_FEATURES: List[Dict[str, str]] = [
     {
         "name": name,
         "group": group_name,
         "purpose": spec["features"][name],
+        "refit_would_clear": "yes - computable at the store's native 5.625 deg spacing"
+        if group_name == "spatial_gradient"
+        else "no - unreachable from a single-cycle dataset",
     }
     for group_name, spec in DESIGNED_FEATURE_SPEC.items()
     if group_name in ("spatial_gradient", "lead_time_tendency")

@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Dict
 
 import pytest
 import xgboost as xgb
 
 from app.ml.feature_schema import (
+    BUST_PATTERN_SIMILARITY_PROVENANCE,
     DESIGNED_FEATURE_SPEC,
     DESIGNED_FEATURES,
     FEATURE_COLUMNS,
@@ -152,15 +154,151 @@ def test_unserved_features_really_are_absent_from_the_notebook():
     If this ever fails, the notebook has been updated to compute them and the
     refit path is worth revisiting.
     """
-    notebook = Path(__file__).resolve().parents[1] / "Untitled9_original_backup.ipynb"
-    if not notebook.is_file():
+    notebook = _notebook_text()
+    if notebook is None:
         pytest.skip("training notebook not present")
 
-    raw = notebook.read_text(encoding="utf-8")
     for feature in UNIMPLEMENTED_FEATURES:
-        assert feature["name"] not in raw, (
+        assert feature["name"] not in notebook, (
             f"{feature['name']} now appears in the notebook; the recorded "
             f"shortfall may be out of date"
+        )
+
+
+def _notebook_text():
+    path = Path(__file__).resolve().parents[1] / "Untitled9_original_backup.ipynb"
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
+# ── Why the two unserved groups are blocked, verified not assumed ────────────
+
+def test_tendencies_are_degenerate_in_the_served_app():
+    """A lead-time tendency would be identically zero here, not merely unknown.
+
+    A tendency is a difference between two forecast cycles. A meteorology
+    profile holds one scalar per variable per cell and does not vary with lead
+    day, so differencing across days returns 0.0 for every variable at every
+    coordinate. XGBoost never splits on a constant, so this is not a feature
+    awaiting a value - it is a column that could only ever be dead weight while
+    reading as a plausible name in the schema.
+
+    This is asserted rather than documented because it is the difference between
+    "we chose not to compute these" and "these cannot be computed from what is
+    held". Only the second justifies leaving them out.
+    """
+    from app.services.map_service import map_service
+    from app.services.prediction_service import PredictionService
+
+    lat, lon = 25.3125, 84.375
+    profile = map_service.get_profile_at(lat, lon)
+
+    for day in range(1, 11):
+        inputs = PredictionService.build_model_inputs(profile, float(day) * 24.0)
+        varying = {k: v for k, v in inputs.items() if k != "lead_hours"}
+        if day == 1:
+            first = varying
+        else:
+            assert varying == first, (
+                "profile now varies with lead day; the tendency features may "
+                "have become computable and this suite needs revisiting"
+            )
+
+    # And the tendencies themselves, evaluated the way they would have to be.
+    def series(field):
+        return [
+            PredictionService.build_model_inputs(
+                map_service.get_profile_at(lat, lon), float(day) * 24.0
+            )[field]
+            for day in range(1, 11)
+        ]
+
+    for field in (
+        "mean_sea_level_pressure",
+        "2m_temperature",
+        "geopotential_500",
+        "total_precipitation_24hr",
+    ):
+        values = series(field)
+        deltas = {values[i + 1] - values[i] for i in range(len(values) - 1)}
+        assert deltas == {0.0}, f"{field} tendency is not degenerate: {deltas}"
+
+
+def test_only_the_tendencies_are_marked_unreachable_by_a_refit():
+    """Gradients are computable; tendencies are not reachable from the data.
+
+    They need separating because they imply different follow-up work. The
+    gradients can be differenced across neighbouring cells of a grid the served
+    app already holds, at the store's native spacing. The tendencies cannot be
+    reached at all: the only store the notebook opens pins init_time to 0012 UTC
+    - one forecast cycle per day - so there is never a second forecast to
+    difference against.
+    """
+    by_group: Dict[str, set] = {}
+    for feature in UNIMPLEMENTED_FEATURES:
+        by_group.setdefault(feature["group"], set()).add(feature["refit_would_clear"])
+
+    assert by_group["spatial_gradient"] == {
+        "yes - computable at the store's native 5.625 deg spacing"
+    }
+    assert by_group["lead_time_tendency"] == {"no - unreachable from a single-cycle dataset"}
+
+
+def test_served_grid_is_the_store_native_spacing_not_a_coarsening():
+    """The gradients' coarse appearance is the dataset's, not the app's.
+
+    An earlier draft of this file claimed the served 5.625 deg grid was a 4x
+    coarsening of the store and that a refit would recover ~156 km resolution.
+    That was wrong, and the assertion below is what caught it: the store name
+    encodes its own grid, "64x32", and 360/64 and 180/32 are both exactly
+    5.625. The India domain then spans about 5x5 cells, which is exactly the
+    grid held in map_service.
+
+    So there is no finer resolution on offer. If the served spacing ever changes
+    away from the native one, the recorded rationale needs rechecking; if the
+    store is ever swapped for a finer dataset, this is where it shows up.
+    """
+    from app.services.map_service import GRID_DATA
+
+    lats = sorted({point["lat"] for point in GRID_DATA})
+    lons = sorted({point["lon"] for point in GRID_DATA})
+
+    lat_step = round(lats[1] - lats[0], 6)
+    lon_step = round(lons[1] - lons[0], 6)
+
+    # WeatherBench2 hres/2016-2022-0012-64x32_equiangular_conservative
+    assert lat_step == round(180 / 32, 6) == 5.625
+    assert lon_step == round(360 / 64, 6) == 5.625
+
+    # And the India domain at that spacing yields the grid actually served.
+    assert (37 - 8) / lat_step < 6
+    assert (98 - 68) / lon_step < 6
+    assert len(lats) == 5 and len(lons) == 5
+
+
+def test_bust_pattern_similarity_provenance_is_flagged_undocumented():
+    """The served model's 2nd-most-influential input has no recorded derivation.
+
+    This is a standing honesty gap. It is flagged rather than fixed because
+    fixing it means establishing where the value actually came from, which is not
+    something the code can answer. If the notebook ever gains a cosine-similarity
+    computation, or the scalar's origin is documented elsewhere, this should fail
+    and be revisited rather than left passing.
+    """
+    assert BUST_PATTERN_SIMILARITY_PROVENANCE == "UNDOCUMENTED"
+
+    notebook = _notebook_text()
+    if notebook is None:
+        pytest.skip("training notebook not present")
+
+    assert "bust_pattern_similarity" not in notebook, (
+        "the notebook now computes bust_pattern_similarity; the provenance gap "
+        "is resolved and this flag should be removed"
+    )
+    for token in ("cosine", "similarity"):
+        assert token not in notebook.lower(), (
+            f"the notebook now contains '{token}'; the provenance gap may be closed"
         )
 
 
@@ -194,3 +332,33 @@ def test_schema_json_explains_why_the_gap_exists(schema_json: dict):
     note = schema_json["unimplemented_features"]["_note"]
     assert "num_feature" in note
     assert "refit" in note
+    # The two groups are blocked differently, and the record has to say which.
+    assert "init_time" in note
+    assert "0012" in note
+
+
+def test_schema_json_keeps_the_group_split(schema_json: dict):
+    cleared = schema_json["unimplemented_features"]["cleared_by_refit"]
+    assert cleared["spatial_gradient"].startswith("yes")
+    assert cleared["lead_time_tendency"].startswith("no")
+
+
+def test_schema_json_records_the_provenance_gap(schema_json: dict):
+    """An input the model actively uses must not have its origin quietly dropped.
+
+    Separate from the unimplemented seven: those are absent features, this is a
+    served feature whose derivation nobody has recorded. It outranks them because
+    it reaches predictions.
+    """
+    gaps = schema_json["provenance_gaps"]
+    entry = gaps["bust_pattern_similarity"]
+
+    assert entry["status"] == "UNDOCUMENTED"
+    assert entry["in_notebook_feature_cols"] is False
+    assert entry["notebook_contains_cosine_or_similarity"] is False
+    assert entry["flag"] == "BUST_PATTERN_SIMILARITY_PROVENANCE"
+    assert "second most influential" in entry["note"]
+
+
+def test_module_and_json_agree_on_the_provenance_flag():
+    assert BUST_PATTERN_SIMILARITY_PROVENANCE == "UNDOCUMENTED"
