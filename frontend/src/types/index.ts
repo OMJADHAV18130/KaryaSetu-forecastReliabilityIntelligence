@@ -267,37 +267,3 @@ export interface RiskAreasResponse {
   method: string;
   note: string;
 }
-
-export interface HistoricalEvent {
-  event_id: string;
-  name: string;
-  date: string;
-  region: string;
-  state: string;
-  latitude: number;
-  longitude: number;
-  forecast_rainfall_mm: number;
-  observed_rainfall_mm: number;
-  absolute_error_mm: number;
-  lead_days: number;
-  model_predicted_bust: boolean;
-  model_bust_probability: number;
-  confidence_level: string;
-  severity: 'CRITICAL' | 'HIGH' | 'MODERATE';
-  synoptic_cause: string;
-  nwp_model: string;
-  impact?: string;
-}
-
-export interface HistoricalEventsResponse {
-  available: boolean;
-  results: HistoricalEvent[];
-  total_events?: number;
-  critical_events?: number;
-  detection_rate?: string | null;
-  source?: string | null;
-  /** Explains why the list is empty when ``available`` is false. */
-  message?: string;
-  /** Field documentation, returned so an operator knows what to supply. */
-  expected_record_shape?: Record<string, string>;
-}

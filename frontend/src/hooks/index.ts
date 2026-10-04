@@ -53,14 +53,6 @@ export function useVerification() {
   });
 }
 
-export function useHistoricalEvents() {
-  return useQuery({
-    queryKey: ['historicalEvents'],
-    queryFn: api.getHistoricalEvents,
-    staleTime: 300000,
-  });
-}
-
 export function useGlobalExplanation() {
   return useQuery({
     queryKey: ['globalExplanation'],

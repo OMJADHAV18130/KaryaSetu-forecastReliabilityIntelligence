@@ -17,7 +17,6 @@ import type {
   VerificationResponse,
   HealthStatus,
   LocationDetail,
-  HistoricalEventsResponse,
   TimeSeriesResponse,
   ScoreBatchResponse,
 } from '../types';
@@ -405,23 +404,5 @@ export async function getVerification(): Promise<VerificationResponse> {
     };
   }
   const { data } = await apiClient.get('/api/verification');
-  return data;
-}
-
-export async function getHistoricalEvents(): Promise<HistoricalEventsResponse> {
-  if (API_MODE === 'mock') {
-    // No curated case archive exists for this prototype. Inventing event rows
-    // here would put forecast and observed rainfall figures on screen that were
-    // never measured, so mock mode matches the backend and reports nothing.
-    return {
-      available: false,
-      results: [],
-      total_events: 0,
-      critical_events: 0,
-      message:
-        'No case archive is attached to this prototype, so no historical bust events can be shown.',
-    };
-  }
-  const { data } = await apiClient.get('/api/historical-events');
   return data;
 }

@@ -85,7 +85,7 @@ src/
 │   │                              # Loading / Unavailable blocks
 │   ├── LocationAnalysis.tsx       # probability + day curve + input table
 │   └── ModelInputTable.tsx
-├── pages/                         # 10 routes, one file each
+├── pages/                         # 8 routes, one file each
 ├── data/
 │   ├── districtIndex.ts           # 755 districts, search index
 │   ├── indianDistricts.ts         # reference cells + IDW helper
@@ -119,7 +119,6 @@ scripts/
 | `/bust-detection` | Bust Detection | `BustDetection.tsx` | Ranked grid cells above the threshold + clustered areas |
 | `/verification` | Verification | `Verification.tsx` | Forecast vs observed rainfall |
 | `/explainability` | Explainability | `Explainability.tsx` | Mean \|SHAP\| globally; per-coordinate attribution |
-| `/historical` | Case Archive | `HistoricalEvents.tsx` | Stored historical cases |
 | `/settings` | Settings | `Settings.tsx` | Theme only |
 
 Any unrecognised path falls through to Overview, so a mistyped URL lands somewhere
@@ -178,7 +177,9 @@ network round-trip.
 | `GET /api/explanation/global` | Explainability (global table) |
 | `GET /api/explanation/location` | Explainability (per-coordinate) |
 | `GET /api/verification` | Verification |
-| `GET /api/historical-events` | Case Archive |
+
+`GET /api/historical-events` has no page. It is kept alongside
+`/api/model-performance` for direct API consumers only.
 
 `POST /api/predict` is exported from `api.ts` for direct feature-vector scoring. No
 page calls it, because no page has a reason to hand-build a feature vector when the
@@ -225,9 +226,10 @@ consumers. `/api/model-performance` returns `held_out_test_set` and
 September 2019 evaluation on data the model never saw, the second is what the
 booster this API loaded measures on its own fitting data. No page renders either.
 
-**`/api/verification`** and **`/api/historical-events`** return `available: false`,
-a reason, and `expected_record_shape`. No archive is configured in this deployment,
-and an empty table would read as "nothing happened" rather than "nothing to show".
+**`/api/verification`** returns `available: false`, a reason, and
+`expected_record_shape`. No archive is configured in this deployment, and an empty
+table would read as "nothing happened" rather than "nothing to show".
+`/api/historical-events` behaves the same way.
 
 ---
 

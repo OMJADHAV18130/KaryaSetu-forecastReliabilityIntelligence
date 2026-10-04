@@ -8,7 +8,6 @@ import BustDetection from './pages/BustDetection';
 import TimeSeries from './pages/TimeSeries';
 import Verification from './pages/Verification';
 import Explainability from './pages/Explainability';
-import HistoricalEvents from './pages/HistoricalEvents';
 import Settings from './pages/Settings';
 import { ThemeProvider } from './lib/theme';
 
@@ -35,7 +34,6 @@ export default function App() {
               <Route path="/time-series" element={<TimeSeries />} />
               <Route path="/verification" element={<Verification />} />
               <Route path="/explainability" element={<Explainability />} />
-              <Route path="/historical" element={<HistoricalEvents />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Overview />} />
             </Route>

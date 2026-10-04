@@ -17,10 +17,26 @@ PORT = int(os.getenv("PORT", "8000"))
 API_PREFIX = os.getenv("API_PREFIX", "/api")
 
 # Model and Data Paths
-MODEL_PATH = os.getenv("MODEL_PATH", str(BASE_DIR / "models" / "xgboost_model" / "model.json"))
-CALIBRATOR_PATH = os.getenv("CALIBRATOR_PATH", str(BASE_DIR / "models" / "calibration" / "calibrator.joblib"))
-SHAP_BACKGROUND_PATH = os.getenv("SHAP_BACKGROUND_PATH", str(BASE_DIR / "models" / "shap" / "background_data.joblib"))
-FEATURE_SCHEMA_PATH = os.getenv("FEATURE_SCHEMA_PATH", str(BASE_DIR / "models" / "feature_schema.json"))
+def _artifact_path(env_name: str, *relative: str) -> str:
+    """Resolve an artifact path from the environment, anchored to the backend root.
+
+    ``.env`` ships relative values like ``models/xgboost_model/model.json``, which
+    only resolve when the process happens to be started from ``backend/``. Started
+    from anywhere else the loader logs four "file not found" warnings and every
+    endpoint then answers "Model or calibrator not loaded" - a failure that looks
+    like a broken model rather than a broken path. Anchoring relative values to
+    ``BASE_DIR`` makes the working directory irrelevant.
+    """
+    configured = os.getenv(env_name, "")
+    if configured and not Path(configured).is_absolute():
+        configured = str(BASE_DIR / configured)
+    return configured or str(BASE_DIR.joinpath(*relative))
+
+
+MODEL_PATH = _artifact_path("MODEL_PATH", "models", "xgboost_model", "model.json")
+CALIBRATOR_PATH = _artifact_path("CALIBRATOR_PATH", "models", "calibration", "calibrator.joblib")
+SHAP_BACKGROUND_PATH = _artifact_path("SHAP_BACKGROUND_PATH", "models", "shap", "background_data.joblib")
+FEATURE_SCHEMA_PATH = _artifact_path("FEATURE_SCHEMA_PATH", "models", "feature_schema.json")
 
 # CORS Configuration from Environment
 CORS_ORIGINS = os.getenv(

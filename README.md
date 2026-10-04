@@ -38,7 +38,7 @@ React Operational Dashboard
 | **LOCATE** | Where exactly, and how does that change with lead day? | Location Search, Time Series |
 | **QUANTIFY** | How likely, expressed as a calibrated probability and a confidence band? | Bust Detection, Bust Risk Map |
 | **EXPLAIN** | Which drivers pushed this number, and which ones move the model most often? | Explainability |
-| **VERIFY** | Did a stored forecast actually verify against the rainfall that was measured? | Verification, Case Archive |
+| **VERIFY** | Did a stored forecast actually verify against the rainfall that was measured? | Verification |
 
 Confidence is always `1 - bust_probability`. Bands are a display convention for
 this prototype: HIGH ≥ 0.70, MODERATE ≥ 0.40, LOW < 0.40.
@@ -505,7 +505,7 @@ project-root/
 │   │   │   │                           # ProbabilityStat, Loading/Unavailable blocks
 │   │   │   ├── LocationAnalysis.tsx
 │   │   │   └── ModelInputTable.tsx
-│   │   ├── pages/                      # 9 routes, one file each
+│   │   ├── pages/                      # 8 routes, one file each
 │   │   ├── data/                       # districtIndex, indianDistricts
 │   │   ├── lib/                        # theme.tsx, riskScale.ts
 │   │   ├── services/api.ts             # Single API client + mock fixtures
@@ -625,7 +625,7 @@ python train_model.py
 | SHAP_BACKGROUND_PATH | models/shap/background_data.joblib | Path to the SHAP background sample |
 | FEATURE_SCHEMA_PATH | models/feature_schema.json | Feature names, order and domains |
 | VERIFICATION_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for the Verification page |
-| CASE_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for the Case Archive page |
+| CASE_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for `GET /api/historical-events` |
 | CORS_ORIGINS | http://localhost:5173,... | Allowed CORS origins |
 
 The two archive variables default to unset. That is the honest state of this
@@ -660,7 +660,7 @@ a backend.
   unavailable rather than substituting a number: the loaded-artifact evaluation,
   SHAP attribution, and model identity. The transcribed September 2019 figures are
   still readable, because they are a static record rather than a live computation
-- Verification and Case Archive stay unavailable, exactly as in live mode
+- Verification stays unavailable, exactly as in live mode
 
 To switch modes, set `VITE_API_MODE` in `frontend/.env`.
 
@@ -683,8 +683,8 @@ Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → 
 6. **Explainability** — the mean |SHAP| ranking across the background sample, then
    the per-coordinate diverging bars for the same point, with direction and the
    checksum that proves the bars rebuild the number above them
-7. **Verification** and **Case Archive** — both say DATA NOT AVAILABLE and explain
-   the record shape they would need. That is the intended result, not a stub
+7. **Verification** - says DATA NOT AVAILABLE and explains the record shape it would
+   need. That is the intended result, not a stub
 8. **Settings** — toggle the theme; light is the default, the map canvas stays dark
    in both
 

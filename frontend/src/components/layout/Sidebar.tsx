@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   LineChart,
   CheckCircle,
-  History,
   BarChart3,
   Settings,
   Shield,
@@ -27,7 +26,6 @@ const navItems = [
   { path: '/bust-detection', label: 'Bust Detection', icon: AlertTriangle },
   { path: '/verification', label: 'Verification', icon: CheckCircle },
   { path: '/explainability', label: 'Explainability', icon: BarChart3 },
-  { path: '/historical', label: 'Case Archive', icon: History },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
