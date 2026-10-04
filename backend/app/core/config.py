@@ -48,7 +48,7 @@ API_VERSION = "1.0.0"
 API_DESCRIPTION = """
 AI-based forecast bust detection for medium-range rainfall forecasts.
 
-This is a **research prototype** that adds a reliability layer over NWP forecasts.
+This service adds a reliability layer over NWP forecasts.
 It does NOT replace the NWP forecast — it predicts when the forecast may become unreliable.
 
 ## Scope
@@ -68,5 +68,5 @@ WeatherBench2 HRES and ERA5 (research training data)
 - Validation: August 2019
 - Testing: September 2019
 
-**NOTE**: These are research test-set results, not operational statistics.
+**NOTE**: Every figure this service returns is a model evaluation. It is not a live operational statistic.
 """

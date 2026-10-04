@@ -1,4 +1,4 @@
-import { Flame, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Flame, Info, ShieldCheck } from 'lucide-react';
 import { LEVEL_TONE, rampGradient, type ReliabilityLayer } from '../../lib/riskScale';
 import type { DistrictRisk } from './DistrictRiskMap';
 
@@ -98,10 +98,10 @@ export default function RiskLegend({ layer, day, ranking, onSelect }: RiskLegend
         </div>
 
         <p className="text-[8.5px] text-ink-muted leading-snug mt-2 pt-2 border-t border-line flex items-start gap-1">
-          <AlertTriangle className="w-2.5 h-2.5 mt-px shrink-0 text-ink-muted" />
+          <Info className="w-2.5 h-2.5 mt-px shrink-0 text-ink-muted" />
           <span>
-            District shading is inverse-distance interpolation of the trained 5.625° grid, not a
-            per-district model run.
+            Each district is scored by the trained model at its own anchor. Model inputs are
+            interpolated from the reference grid; the risk value is not.
           </span>
         </p>
       </div>

@@ -45,14 +45,6 @@ export function useRiskAreas(day: number, threshold: number = 0.5) {
   });
 }
 
-export function useModelPerformance() {
-  return useQuery({
-    queryKey: ['modelPerformance'],
-    queryFn: api.getModelPerformance,
-    staleTime: 300000,
-  });
-}
-
 export function useVerification() {
   return useQuery({
     queryKey: ['verification'],
@@ -87,6 +79,49 @@ export function useCoordinatePrediction(point: { lat: number; lon: number } | nu
     queryFn: () => api.getLocationDetail(point!.lat, point!.lon, day),
     enabled: point !== null,
     staleTime: 60000,
+  });
+}
+
+/**
+ * Compact, stable key for a coordinate list. Callers rebuild these arrays on
+ * every render (GeoJSON anchors, station tables), and React Query needs a
+ * primitive it can compare, so the list is folded into one number. djb2 over
+ * the rounded coordinates: any change in the set changes the key.
+ */
+function coordinateSignature(
+  coordinates: { latitude: number; longitude: number }[]
+): string {
+  let hash = 5381;
+  for (const c of coordinates) {
+    const pair = `${c.latitude.toFixed(4)},${c.longitude.toFixed(4)};`;
+    for (let i = 0; i < pair.length; i += 1) {
+      hash = ((hash << 5) + hash + pair.charCodeAt(i)) >>> 0;
+    }
+  }
+  return `${coordinates.length}:${hash.toString(36)}`;
+}
+
+/**
+ * Real trained-model scores for a set of coordinates at one lead day.
+ *
+ * This is how every map value gets onto the screen. The backend runs the loaded
+ * booster once per coordinate, so a choropleth cell, a station pin and a hover
+ * card all carry a number the model actually produced. Nothing here is
+ * interpolated client-side and no coordinate is filled in from a neighbour.
+ *
+ * The query stays disabled while the list is empty, which is what a map does
+ * before its boundary file has loaded.
+ */
+export function useCoordinateScores(
+  day: number,
+  coordinates: { latitude: number; longitude: number }[],
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: ['coordinateScores', day, coordinateSignature(coordinates)],
+    queryFn: () => api.scoreCoordinates(day, coordinates),
+    enabled: enabled && coordinates.length > 0,
+    staleTime: 300000,
   });
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, CircleMarker, Rectangle, Tooltip, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { extendLeaflet } from '@india-boundary-corrector/leaflet-layer';
@@ -14,12 +14,13 @@ import {
   Flame,
   Tag,
 } from 'lucide-react';
-import type { ForecastPoint } from '../../types';
-import { INDIAN_DISTRICTS, interpolateReliability } from '../../data/indianDistricts';
+import type { ForecastPoint, ScoredCoordinate } from '../../types';
+import { INDIAN_DISTRICTS } from '../../data/indianDistricts';
 import DistrictRiskMap, { DISTRICT_PANE, type DistrictRisk } from './DistrictRiskMap';
 import RiskLegend from './RiskLegend';
 import CoordinateProbe from './CoordinateProbe';
-import { levelFor, LEVEL_TONE, type ReliabilityLayer } from '../../lib/riskScale';
+import { levelFor, percent, LEVEL_TONE, type ReliabilityLayer } from '../../lib/riskScale';
+import { useCoordinateScores } from '../../hooks';
 
 export type MapView = 'risk' | 'markers';
 
@@ -128,9 +129,14 @@ function BasemapDimmer({ dim }: { dim: boolean }) {
 }
 
 /**
- * Global map mouse events listener. In both views this reports a cheap
- * interpolated estimate for the HUD; the trained-model call only happens on
- * click, so hovering never floods the backend.
+ * Global map mouse events listener, used only on the trained-grid view.
+ *
+ * Hovering never calls the model. It snaps to the nearest trained grid cell and
+ * reports that cell's own value, which the backend computed once for the whole
+ * grid. The HUD therefore shows a real model output and names the cell it came
+ * from, instead of blending neighbouring probabilities into an estimate that
+ * looks measured but is not. Clicking is what triggers a real evaluation at the
+ * exact coordinate, via the probe.
  */
 function MapHoverListener({
   points,
@@ -141,27 +147,37 @@ function MapHoverListener({
   onHover: (point: ForecastPoint) => void;
   onClick: (point: ForecastPoint) => void;
 }) {
-  const buildEstimate = (lat: number, lng: number): ForecastPoint | null => {
-    if (lat < 6.0 || lat > 38.0 || lng < 67.0 || lng > 98.5) return null;
-    const interp = interpolateReliability(lat, lng, points);
-    return {
-      latitude: Number(lat.toFixed(4)),
-      longitude: Number(lng.toFixed(4)),
-      bust_probability: Number(interp.bust_probability.toFixed(4)),
-      confidence: Number(interp.confidence.toFixed(4)),
-      confidence_level: levelFor(interp.confidence),
-      region: interp.nearestRegion,
-    };
+  const nearestCell = (lat: number, lng: number): ForecastPoint | null => {
+    if (!points.length) return null;
+    let best = points[0];
+    let bestDistance = Infinity;
+    for (const p of points) {
+      const d = (lat - p.latitude) ** 2 + (lng - p.longitude) ** 2;
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = p;
+      }
+    }
+    return best;
   };
 
   useMapEvents({
     mousemove(e) {
-      const estimate = buildEstimate(e.latlng.lat, e.latlng.lng);
-      if (estimate) onHover(estimate);
+      const cell = nearestCell(e.latlng.lat, e.latlng.lng);
+      if (cell) onHover(cell);
     },
     click(e) {
-      const estimate = buildEstimate(e.latlng.lat, e.latlng.lng);
-      if (estimate) onClick(estimate);
+      // The click keeps the pointer's own coordinates; the value attached to it
+      // is filled in by the coordinate probe's real backend call.
+      const cell = nearestCell(e.latlng.lat, e.latlng.lng);
+      if (cell) {
+        onClick({
+          ...cell,
+          latitude: Number(e.latlng.lat.toFixed(4)),
+          longitude: Number(e.latlng.lng.toFixed(4)),
+          region: cell.region,
+        });
+      }
     },
   });
 
@@ -249,6 +265,30 @@ export default function IndiaMap({
 
   const halfLat = 2.8125;
   const halfLon = 2.8125;
+
+  // Station coordinates are fixed, so they are asked for once per lead day and
+  // keyed by coordinate for lookup while the map renders.
+  const stationCoordinates = useMemo(
+    () =>
+      INDIAN_DISTRICTS.map((d) => ({
+        latitude: d.latitude,
+        longitude: d.longitude,
+      })),
+    []
+  );
+
+  const stationScoresQuery = useCoordinateScores(day, stationCoordinates);
+
+  const stationScores = useMemo(() => {
+    const index = new Map<string, ScoredCoordinate>();
+    for (const result of stationScoresQuery.data?.results ?? []) {
+      index.set(
+        `${result.latitude.toFixed(4)},${result.longitude.toFixed(4)}`,
+        result
+      );
+    }
+    return index;
+  }, [stationScoresQuery.data]);
 
   const setView = (next: MapView) => {
     setInternalView(next);
@@ -482,7 +522,7 @@ export default function IndiaMap({
         {/* District-level bust risk choropleth (rendered below the sovereign boundary) */}
         {isRiskView && (
           <DistrictRiskMap
-            points={points}
+            day={day}
             layer={layer}
             selectedPoint={selectedPoint ?? null}
             showLabels={showLabels}
@@ -562,18 +602,52 @@ export default function IndiaMap({
         {!isRiskView &&
           showDistrictMarkers &&
           INDIAN_DISTRICTS.map((district) => {
-            const interp = interpolateReliability(district.latitude, district.longitude, points);
-            const value = layer === 'confidence' ? interp.confidence : interp.bust_probability;
+            // Every station pin carries the model's own evaluation at that
+            // station's coordinates. A station the backend did not return is
+            // drawn hollow and says so on hover, rather than taking the
+            // probability of whatever grid cell happens to be nearby.
+            const score = stationScores.get(
+              `${district.latitude.toFixed(4)},${district.longitude.toFixed(4)}`
+            );
+            if (!score) {
+              return (
+                <CircleMarker
+                  key={`district-${district.id}`}
+                  center={[district.latitude, district.longitude]}
+                  radius={4}
+                  fillColor="#94a3b8"
+                  fillOpacity={0.15}
+                  stroke
+                  color="#64748b"
+                  weight={1}
+                  dashArray="2,2"
+                  eventHandlers={{}}
+                >
+                  <Tooltip direction="top" offset={[0, -6]} opacity={1}>
+                    <div className="district-tip !min-w-0 !p-0">
+                      <b>
+                        {district.name}, {district.state}
+                      </b>
+                      <span className="!font-mono">
+                        {district.latitude.toFixed(2)}°N, {district.longitude.toFixed(2)}°E
+                      </span>
+                      <em>DATA NOT AVAILABLE — no model evaluation for this coordinate</em>
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
+              );
+            }
+
+            const value = layer === 'confidence' ? score.confidence : score.bust_probability;
             const color = getColor(value, layer);
-            const isHovered =
-              liveHoveredPoint?.region?.includes(district.name);
+            const isHovered = liveHoveredPoint?.region?.includes(district.name);
 
             const districtPoint: ForecastPoint = {
               latitude: district.latitude,
               longitude: district.longitude,
-              bust_probability: interp.bust_probability,
-              confidence: interp.confidence,
-              confidence_level: levelFor(interp.confidence),
+              bust_probability: score.bust_probability,
+              confidence: score.confidence,
+              confidence_level: score.confidence_level,
               region: `${district.name} District, ${district.state}`,
             };
 
@@ -603,20 +677,23 @@ export default function IndiaMap({
                     <div className="district-tip-grid">
                       <div>
                         <label>Bust Risk</label>
-                        <b className="tip-bust">
-                          {(interp.bust_probability * 100).toFixed(1)}%
-                        </b>
+                        <b className="tip-bust">{percent(score.bust_probability)}</b>
                       </div>
                       <div>
                         <label>Confidence</label>
-                        <b className="tip-conf">{(interp.confidence * 100).toFixed(1)}%</b>
+                        <b className="tip-conf">{percent(score.confidence)}</b>
                       </div>
                       <div>
                         <label>Level</label>
-                        <b>{levelFor(interp.confidence)}</b>
+                        <b>{score.confidence_level}</b>
                       </div>
                     </div>
-                    <em>Interpolated from the trained 5.625&deg; model grid</em>
+                    <em>
+                      Scored by the trained model at this coordinate
+                      {score.derivation?.distance_km
+                        ? `, ${score.derivation.distance_km}° from the nearest reference cell`
+                        : ''}
+                    </em>
                   </div>
                 </Tooltip>
               </CircleMarker>

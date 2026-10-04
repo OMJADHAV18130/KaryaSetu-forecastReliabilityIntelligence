@@ -9,7 +9,6 @@ import {
   CheckCircle,
   History,
   BarChart3,
-  Gauge,
   Settings,
   Shield,
   PanelLeftClose,
@@ -28,7 +27,6 @@ const navItems = [
   { path: '/bust-detection', label: 'Bust Detection', icon: AlertTriangle },
   { path: '/verification', label: 'Verification', icon: CheckCircle },
   { path: '/explainability', label: 'Explainability', icon: BarChart3 },
-  { path: '/model-performance', label: 'Model Scores', icon: Gauge },
   { path: '/historical', label: 'Case Archive', icon: History },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -155,11 +153,6 @@ export default function Sidebar() {
             </span>
           )}
         </div>
-        {!isCollapsed && (
-          <p className="text-[10px] text-ink-faint text-center tracking-wide uppercase mt-1.5">
-            Research Prototype
-          </p>
-        )}
       </div>
     </aside>
   );

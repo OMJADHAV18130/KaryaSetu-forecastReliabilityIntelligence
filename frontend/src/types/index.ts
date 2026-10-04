@@ -178,95 +178,6 @@ export interface ModelInfo {
   environment: string;
 }
 
-export interface ConfusionCounts {
-  true_negatives: number;
-  false_positives: number;
-  false_negatives: number;
-  true_positives: number;
-}
-
-/**
- * Figures from the notebook's own September 2019 held-out test set, served
- * statically from models/notebook_evaluation.json. This split cannot be
- * re-scored in this deployment, so these are records of a past evaluation
- * rather than live statistics.
- */
-export interface HeldOutTestMetrics {
-  label: string;
-  n_samples: number | null;
-  n_bust: number | null;
-  confusion_matrix: ConfusionCounts | null;
-  classification_report: {
-    precision: number | null;
-    recall: number | null;
-    f1_score: number | null;
-    accuracy: number | null;
-    macro_precision: number | null;
-    macro_recall: number | null;
-    macro_f1: number | null;
-  } | null;
-  roc_auc: number | null;
-  pr_auc: number | null;
-  mcc: number | null;
-  brier_raw: number | null;
-  brier_calibrated: number | null;
-  calibration_method: string | null;
-  operating_threshold: number | null;
-  source_cells: number[];
-  notes: string[];
-}
-
-/** What the loaded booster measures on the data it was actually fitted on. */
-export interface ServedArtifactMetrics {
-  label: string;
-  n_samples: number | null;
-  roc_auc: number | null;
-  pr_auc: number | null;
-  mcc: number | null;
-  accuracy: number | null;
-  brier_raw: number | null;
-  brier_calibrated: number | null;
-  confusion_matrix: ConfusionCounts | null;
-  note: string;
-}
-
-export interface ThresholdSweepRow {
-  threshold: number;
-  precision: number;
-  recall: number;
-  f1: number;
-}
-
-export interface ModelPerformance {
-  model_version: string;
-  model_type: string;
-  feature_count: number;
-  features: string[];
-  hyperparameters: Record<string, unknown>;
-
-  held_out_test_set: HeldOutTestMetrics | null;
-  served_artifact: ServedArtifactMetrics;
-  splits: {
-    train?: string | null;
-    validation?: string | null;
-    test?: string | null;
-    train_rows?: number | null;
-    validation_rows?: number | null;
-    test_rows?: number | null;
-  } | null;
-  threshold_sweep: {
-    label: string;
-    note?: string | null;
-    rows: ThresholdSweepRow[];
-  } | null;
-
-  confidence_bands: Record<string, unknown>;
-  /** Explicit statement of what the model does and does not cover. */
-  scope: string;
-  research_only: boolean;
-  evaluation_note?: string | null;
-}
-
 export interface HealthStatus {
   status: string;
   model_loaded: boolean;
@@ -300,6 +211,35 @@ export interface LocationDetail {
   region?: string;
   model_version?: string | null;
   derivation?: InputDerivation;
+}
+
+/**
+ * One coordinate's real trained-model evaluation, as returned by the batch
+ * scoring endpoint. Every map pin, choropleth cell and hover card is drawn from
+ * these values; nothing on a map is invented client-side.
+ */
+export interface ScoredCoordinate {
+  latitude: number;
+  longitude: number;
+  bust_probability: number;
+  uncalibrated_probability: number;
+  calibration_applied: boolean;
+  confidence: number;
+  confidence_level: string;
+  region?: string | null;
+  derivation: InputDerivation;
+}
+
+export interface ScoreBatchResponse {
+  day: number;
+  lead_hours: number;
+  model_version: string | null;
+  count: number;
+  derivation: {
+    method: string;
+    note: string;
+  };
+  results: ScoredCoordinate[];
 }
 
 export interface TimeSeriesPoint {

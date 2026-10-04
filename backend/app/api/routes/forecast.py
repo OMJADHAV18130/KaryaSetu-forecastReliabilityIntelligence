@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from ...services.prediction_service import prediction_service
 from ...services.map_service import map_service
+from ...schemas.forecast import ScoreBatchRequest, ScoredCoordinate
 
 logger = logging.getLogger("karyasetu")
 router = APIRouter()
@@ -125,6 +126,67 @@ async def get_location_detail(
         raise
     except Exception as e:
         logger.error(f"Location detail failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/forecast/score-batch", response_model=dict)
+async def score_coordinates(payload: ScoreBatchRequest):
+    """
+    Score many coordinates for one lead day.
+
+    This is the endpoint behind the bust risk choropleth. Every district
+    boundary on screen gets its own trained-model evaluation at its own anchor
+    coordinate: the nine meteorological drivers are built for that point, then
+    the loaded booster scores them. No value is copied from a neighbouring
+    district and no placeholder is substituted when a boundary is small or oddly
+    shaped, because a filled-in number is indistinguishable from a computed one
+    once it reaches the screen.
+
+    The drivers themselves are interpolated from the 19-cell reference grid, the
+    same derivation :func:`/api/forecast/location` reports, and every result
+    carries its own ``derivation`` block so the UI can say so per district.
+
+    The whole batch goes through the booster in one pass, so 700 districts cost
+    one booster call rather than 700.
+    """
+    try:
+        coordinates = [(c.latitude, c.longitude) for c in payload.coordinates]
+        results = prediction_service.score_coordinates(
+            coordinates, payload.day, map_service.get_profile_at
+        )
+
+        return {
+            "day": payload.day,
+            "lead_hours": payload.day * 24,
+            "model_version": results[0].get("model_version") if results else None,
+            "count": len(results),
+            "derivation": {
+                "method": "inverse_distance_interpolation_of_model_inputs",
+                "note": (
+                    "Each coordinate was scored by the trained model. Model "
+                    "inputs were interpolated from the trained reference grid "
+                    "before scoring; the probability is not itself interpolated."
+                ),
+            },
+            "results": [
+                ScoredCoordinate(
+                    latitude=r["latitude"],
+                    longitude=r["longitude"],
+                    bust_probability=r["bust_probability"],
+                    uncalibrated_probability=r["uncalibrated_probability"],
+                    calibration_applied=r["calibration_applied"],
+                    confidence=r["confidence"],
+                    confidence_level=r["confidence_level"],
+                    region=r.get("region"),
+                    derivation=r["derivation"],
+                ).model_dump()
+                for r in results
+            ],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch scoring failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

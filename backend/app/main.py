@@ -2,9 +2,9 @@
 KaryaSetu — Forecast Reliability Intelligence API
 
 AI-based forecast bust detection for medium-range rainfall forecasts.
-Research prototype using XGBoost with sigmoid calibration.
+XGBoost with sigmoid calibration.
 
-This is NOT an operational forecasting system. All scores are research test-set results.
+Rainfall forecast busts only. Scores are model evaluations, not live statistics.
 """
 
 from .core import compat
@@ -83,6 +83,9 @@ async def root():
         "version": API_VERSION,
         "environment": ENVIRONMENT,
         "documentation": "/docs",
-        "scope": "Research prototype — Rainfall forecast bust detection",
-        "disclaimer": "This is a research prototype. Not an operational forecasting system.",
+        "scope": "Rainfall forecast bust detection",
+        "disclaimer": (
+            "Evaluations of a trained model on a fixed 2019 training split. "
+            "No live forecast or observation feed is connected."
+        ),
     }

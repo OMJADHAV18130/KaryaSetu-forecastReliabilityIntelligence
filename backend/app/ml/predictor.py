@@ -5,7 +5,7 @@ Predictor — Runs inference using the trained XGBoost model and calibrator.
 import logging
 import math
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 import numpy as np
 
@@ -104,6 +104,79 @@ class Predictor:
             except Exception as e:
                 logger.error(f"Batch prediction error: {e}")
                 results.append({"error": str(e)})
+        return results
+
+    def predict_matrix(self, feature_rows: List[List[float]]) -> List[Dict[str, Any]]:
+        """
+        Score many feature vectors with two booster calls instead of two per row.
+
+        A choropleth asks for every district at once, and ``predict()`` costs one
+        booster call plus one calibrator call per coordinate. This method sends
+        the whole block through the booster in a single ``predict_proba``, then
+        through the calibrator in a second, and assembles exactly the same result
+        dicts ``predict()`` would have produced. Same model, same calibration,
+        same rounding — only the number of calls changes.
+
+        Args:
+            feature_rows: One already-ordered feature vector per location,
+                each following :data:`FEATURE_COLUMNS`.
+
+        Returns:
+            One prediction dict per input row, in the same order.
+
+        Raises:
+            ValueError: If the model is not loaded or any row has the wrong
+                width, or contains a non-finite value.
+        """
+        if not self.model_loaded:
+            raise ValueError("Model is not loaded. Cannot run prediction.")
+
+        if not feature_rows:
+            return []
+
+        width = len(FEATURE_COLUMNS)
+        for index, row in enumerate(feature_rows):
+            if len(row) != width:
+                raise ValueError(
+                    f"Row {index} has {len(row)} features, expected {width}"
+                )
+            for value in row:
+                if math.isnan(value) or math.isinf(value):
+                    raise ValueError(f"Row {index} contains a non-finite value")
+
+        X = np.asarray(feature_rows, dtype=float)
+        raw_probs = self.model.predict_proba(X)[:, 1]
+        if self.calibration_loaded:
+            calibrated_probs = self.calibrator.predict_proba(X)[:, 1]
+        else:
+            calibrated_probs = raw_probs
+
+        request_id = str(uuid.uuid4())[:8]
+        lon_index = FEATURE_COLUMNS.index("longitude")
+        lat_index = FEATURE_COLUMNS.index("latitude")
+        lead_index = FEATURE_COLUMNS.index("lead_hours")
+        similarity_index = FEATURE_COLUMNS.index("bust_pattern_similarity")
+
+        results: List[Dict[str, Any]] = []
+        for i, row in enumerate(feature_rows):
+            calibrated_prob = float(calibrated_probs[i])
+            confidence = 1.0 - calibrated_prob
+            results.append(
+                {
+                    "bust_probability": round(calibrated_prob, 4),
+                    "uncalibrated_probability": round(float(raw_probs[i]), 6),
+                    "calibration_applied": self.calibration_loaded,
+                    "confidence": round(confidence, 4),
+                    "confidence_level": self._confidence_level(confidence),
+                    "day": lead_hours_to_day(row[lead_index]),
+                    "lead_hours": row[lead_index],
+                    "latitude": row[lat_index],
+                    "longitude": row[lon_index],
+                    "bust_pattern_similarity": round(row[similarity_index], 4),
+                    "model_version": self.model_version,
+                    "request_id": request_id,
+                }
+            )
         return results
 
     # Mapping from API schema names to model feature names

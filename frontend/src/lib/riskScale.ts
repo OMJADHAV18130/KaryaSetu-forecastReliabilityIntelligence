@@ -127,3 +127,28 @@ export const LEVEL_TONE: Record<
 export function percent(value: number): string {
   return `${(Math.min(1, Math.max(0, value)) * 100).toFixed(1)}%`;
 }
+
+/**
+ * The trained model's spatial domain, mirrored from the backend's
+ * `feature_schema.DOMAIN` (8N-37N, 68E-98E).
+ *
+ * This exists so the client can tell "outside what the model was trained on"
+ * apart from "the model declined to answer". Nicobars sits at 7.03N, south of
+ * the floor, so it has no value the model can produce; the map says exactly
+ * that instead of leaving a district silently blank.
+ */
+export const MODEL_DOMAIN = {
+  lat_min: 8.0,
+  lat_max: 37.0,
+  lon_min: 68.0,
+  lon_max: 98.0,
+} as const;
+
+export function inModelDomain(latitude: number, longitude: number): boolean {
+  return (
+    latitude >= MODEL_DOMAIN.lat_min &&
+    latitude <= MODEL_DOMAIN.lat_max &&
+    longitude >= MODEL_DOMAIN.lon_min &&
+    longitude <= MODEL_DOMAIN.lon_max
+  );
+}

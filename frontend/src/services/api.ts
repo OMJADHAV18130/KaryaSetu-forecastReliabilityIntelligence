@@ -5,8 +5,6 @@
  */
 
 import axios from 'axios';
-// Transcribed September 2019 evaluation figures, used only in mock mode.
-import evaluation from '../data/notebookEvaluation.json';
 import type {
   ForecastMapResponse,
   ForecastOverview,
@@ -17,12 +15,12 @@ import type {
   GlobalExplanation,
   LocationExplanation,
   VerificationResponse,
-  ModelPerformance,
   ModelInfo,
   HealthStatus,
   LocationDetail,
   HistoricalEventsResponse,
   TimeSeriesResponse,
+  ScoreBatchResponse,
 } from '../types';
 
 const API_MODE = import.meta.env.VITE_API_MODE || 'live';
@@ -196,6 +194,42 @@ export async function getForecastOverview(day: number): Promise<ForecastOverview
     return getMockOverview(day);
   }
   const { data } = await apiClient.get(`/api/forecast/overview?day=${day}`);
+  return data;
+}
+
+/**
+ * Score a set of coordinates for one lead day, in the backend.
+ *
+ * This is what the maps use instead of inventing values client-side. Each
+ * coordinate is a real evaluation of the trained booster at that exact point, so
+ * a choropleth can be drawn for every district boundary without a single cell
+ * borrowing a neighbour's number.
+ *
+ * Offline demo mode has no model, so it returns an empty result set. The maps
+ * treat that as "no values" and render the unavailable state rather than
+ * falling back to substitute numbers.
+ */
+export async function scoreCoordinates(
+  day: number,
+  coordinates: { latitude: number; longitude: number }[]
+): Promise<ScoreBatchResponse> {
+  if (API_MODE === 'mock') {
+    return {
+      day,
+      lead_hours: day * 24,
+      model_version: null,
+      count: 0,
+      derivation: {
+        method: 'unavailable',
+        note: 'DEMO DATA: the trained model is not loaded in offline demo mode.',
+      },
+      results: [],
+    };
+  }
+  const { data } = await apiClient.post('/api/forecast/score-batch', {
+    day,
+    coordinates,
+  });
   return data;
 }
 
@@ -395,49 +429,6 @@ export async function getModelInfo(): Promise<ModelInfo> {
     };
   }
   const { data } = await apiClient.get('/api/model-info');
-  return data;
-}
-
-export async function getModelPerformance(): Promise<ModelPerformance> {
-  if (API_MODE === 'mock') {
-    // The September 2019 figures are a static transcription of the notebook's own
-    // printed output, so they are readable offline. The loaded booster's own
-    // metrics cannot be: there is no model in mock mode, so that block reports
-    // nothing measured rather than a plausible placeholder.
-    return {
-      model_version: 'not loaded in mock mode',
-      model_type: 'XGBoost classifier, sigmoid calibration',
-      feature_count: evaluation.held_out_test_metrics ? evaluation.feature_count : 0,
-      features: evaluation.feature_columns ?? [],
-      hyperparameters: {},
-      held_out_test_set: evaluation.held_out_test_metrics ?? null,
-      served_artifact: {
-        label: 'Data the loaded booster was fitted on',
-        n_samples: null,
-        roc_auc: null,
-        pr_auc: null,
-        mcc: null,
-        accuracy: null,
-        brier_raw: null,
-        brier_calibrated: null,
-        confusion_matrix: null,
-        note:
-          'These figures require the trained booster, which is not loaded in offline demo mode.',
-      },
-      splits: evaluation.splits ?? null,
-      threshold_sweep: evaluation.threshold_sweep ?? null,
-      confidence_bands: {
-        high: 0.7,
-        moderate: 0.4,
-        note:
-          'Display convention for this prototype, not a tuned cut-off. HIGH confidence at or above 0.70, MODERATE at or above 0.40, LOW below 0.40, with confidence = 1 - bust probability.',
-      },
-      scope:
-        'Rainfall forecast bust detection only. The model estimates the probability that a medium-range accumulated rainfall forecast will miss its target by more than its error tolerance. It does not detect cyclones, temperature errors, pressure errors or any other forecast variable.',
-      research_only: true,
-    };
-  }
-  const { data } = await apiClient.get('/api/model-performance');
   return data;
 }
 
