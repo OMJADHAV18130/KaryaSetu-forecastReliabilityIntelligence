@@ -14,7 +14,6 @@ import type {
   LocalExplanation,
   GlobalExplanation,
   LocationExplanation,
-  VerificationResponse,
   HealthStatus,
   LocationDetail,
   TimeSeriesResponse,
@@ -388,30 +387,5 @@ export async function getGlobalExplanation(): Promise<GlobalExplanation> {
     };
   }
   const { data } = await apiClient.get('/api/explanation/global');
-  return data;
-}
-
-export async function getVerification(): Promise<VerificationResponse> {
-  if (API_MODE === 'mock') {
-    // No forecast/observation archive exists for this prototype, so mock mode
-    // reports the same unavailable state as the backend rather than inventing
-    // measurement pairs. `model_skill` is left unavailable too: those figures
-    // are transcribed from the training notebook, and reproducing them as
-    // fixtures would be a second copy that could drift from the original.
-    return {
-      model_skill: {
-        available: false,
-        message:
-          'Measured skill figures come from the training notebook and are not served in demo mode. Switch to live mode to read them.',
-      },
-      archive: {
-        available: false,
-        results: [],
-        message:
-          'No verification archive is attached to this prototype, so no forecast-versus-observation comparison can be shown.',
-      },
-    };
-  }
-  const { data } = await apiClient.get('/api/verification');
   return data;
 }

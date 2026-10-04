@@ -6,7 +6,6 @@ import {
   Search,
   AlertTriangle,
   LineChart,
-  CheckCircle,
   BarChart3,
   Settings,
   Shield,
@@ -24,7 +23,6 @@ const navItems = [
   { path: '/search', label: 'Location Search', icon: Search },
   { path: '/time-series', label: 'Time Series', icon: LineChart },
   { path: '/bust-detection', label: 'Bust Detection', icon: AlertTriangle },
-  { path: '/verification', label: 'Verification', icon: CheckCircle },
   { path: '/explainability', label: 'Explainability', icon: BarChart3 },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];

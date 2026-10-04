@@ -6,7 +6,6 @@ import ForecastMap from './pages/ForecastMap';
 import Search from './pages/Search';
 import BustDetection from './pages/BustDetection';
 import TimeSeries from './pages/TimeSeries';
-import Verification from './pages/Verification';
 import Explainability from './pages/Explainability';
 import Settings from './pages/Settings';
 import { ThemeProvider } from './lib/theme';
@@ -32,7 +31,6 @@ export default function App() {
               <Route path="/search" element={<Search />} />
               <Route path="/bust-detection" element={<BustDetection />} />
               <Route path="/time-series" element={<TimeSeries />} />
-              <Route path="/verification" element={<Verification />} />
               <Route path="/explainability" element={<Explainability />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Overview />} />

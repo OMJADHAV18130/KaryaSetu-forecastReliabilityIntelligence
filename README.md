@@ -38,7 +38,7 @@ React Operational Dashboard
 | **LOCATE** | Where exactly, and how does that change with lead day? | Location Search, Time Series |
 | **QUANTIFY** | How likely, expressed as a calibrated probability and a confidence band? | Bust Detection, Bust Risk Map |
 | **EXPLAIN** | Which drivers pushed this number, and which ones move the model most often? | Explainability |
-| **VERIFY** | Did a stored forecast actually verify against the rainfall that was measured? | Verification |
+| **VERIFY** | Did a stored forecast actually verify against the rainfall that was measured? | *No page.* Measured offline — see [Performance Metrics](#performance-metrics-september-2019-test-set) and `GET /api/verification` |
 
 Confidence is always `1 - bust_probability`. Bands are a display convention for
 this prototype: HIGH ≥ 0.70, MODERATE ≥ 0.40, LOW < 0.40.
@@ -399,11 +399,13 @@ unchanged. It carries a `provenance` string, because these are recorded results
 from a fixed historical evaluation and must not be read as live operational
 statistics.
 
-The Verification page does **not** render those figures. They are written up in the
-[Performance Metrics](#performance-metrics-september-2019-test-set) section below,
-so there is one copy of them rather than two that could drift apart. The page
-states what was verified and how, and leaves the numbers to the documents that own
-them.
+The Verification page has been removed, so this endpoint has no UI consumer and is
+kept for direct API callers only, on the same footing as
+[`/api/historical-events`](#get-apihistorical-events). Those figures are written up
+in the [Performance Metrics](#performance-metrics-september-2019-test-set) section
+below rather than rendered anywhere, so there is one copy of them rather than two
+that could drift apart. The four tests in `tests/test_honesty.py` that compare them
+against the transcribed notebook record are therefore their only guard.
 
 `archive` is the per-location forecast-versus-observation comparison. It returns
 `available: false` with a message and the `expected_record_shape` it would need,
@@ -521,7 +523,7 @@ project-root/
 │   │   │   │                           # ProbabilityStat, Loading/Unavailable blocks
 │   │   │   ├── LocationAnalysis.tsx
 │   │   │   └── ModelInputTable.tsx
-│   │   ├── pages/                      # 8 routes, one file each
+│   │   ├── pages/                      # 7 routes, one file each
 │   │   ├── data/                       # districtIndex, indianDistricts
 │   │   ├── lib/                        # theme.tsx, riskScale.ts
 │   │   ├── services/api.ts             # Single API client + mock fixtures
@@ -675,11 +677,9 @@ a backend.
 - The model is not loaded, so anything that genuinely needs it reports itself
   unavailable rather than substituting a number: the loaded-artifact evaluation,
   SHAP attribution, and model identity
-- The transcribed September 2019 figures are served from static JSON rather than
-  recomputed, so `model_skill` is reported unavailable here: reproducing them as
-  fixtures would create a second copy that could drift from the notebook record.
-  Switch to live mode to read them
-- The per-location verification archive stays unavailable, exactly as in live mode
+
+Verification is not reachable from the UI in either mode: there is no verification
+page, so `/api/verification` is only served for direct API callers, in live mode.
 
 To switch modes, set `VITE_API_MODE` in `frontend/.env`.
 
@@ -702,15 +702,14 @@ Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → 
 6. **Explainability** — the mean |SHAP| ranking across the background sample, then
    the per-coordinate diverging bars for the same point, with direction and the
    checksum that proves the bars rebuild the number above them
-7. **Verification** — separates the two questions. Does the model flag busts well?
-   Answered once, offline, on a held-out September 2019 split; the figures are in
-   [Performance Metrics](#performance-metrics-september-2019-test-set) and are not
-   repeated on the page, so there is one copy of them rather than two. Did *this*
-   forecast bust? Needs an observation, so the per-location half says DATA NOT
-   AVAILABLE and explains the record shape it would need — that part is the
-   intended result, not a stub
-8. **Settings** — toggle the theme; light is the default, the map canvas stays dark
+7. **Settings** — toggle the theme; light is the default, the map canvas stays dark
    in both
+
+Verification is not a page. It was measured once, offline, against reanalysis truth
+on the held-out September 2019 split, and the result is in
+[Performance Metrics](#performance-metrics-september-2019-test-set) and served by
+`GET /api/verification`. Confirming an *individual* bust would additionally need a
+forecast/observation archive, and none is attached.
 
 ## Research Limitations
 
@@ -720,8 +719,9 @@ Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → 
 4. **Research Data**: Uses WeatherBench2 research data, not operational NWP forecasts
 5. **No Operational Verification**: Model skill is measured once, offline, on the
    September 2019 held-out test set. Confirming an individual bust needs a
-   forecast/observation archive, and none is attached, so the per-location half of
-   the Verification page reports itself unavailable
+   forecast/observation archive, and none is attached, so
+   `GET /api/verification` reports its `archive` half unavailable. There is no
+   verification page
 6. **No Real-Time Data**: Does not process live NWP forecasts or real-time observations
 7. **Grid Resolution**: Uses coarse 64×32 equiangular grid (~5.625° resolution)
 
@@ -769,7 +769,7 @@ could not check that.
 | `tests/conftest.py` | Shared fixtures, plus a recursive NaN/Inf check over every response |
 | `tests/test_probability_contract.py` | `confidence = 1 - bust_probability`, `day = lead_hours / 24`, band boundaries, determinism, per-day model inputs |
 | `tests/test_validation.py` | NaN, infinity, out-of-domain and missing features are all rejected; a 422 never carries a number |
-| `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability; the Verification page serves real measured skill and never labels it live |
+| `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability; `/api/verification` serves real measured skill and never labels it live |
 | `tests/test_map_scoring.py` | Batch scoring equals single-point scoring coordinate by coordinate; values actually vary with position; NaN, infinity, out-of-domain, empty, oversized and bad-day requests are all rejected; `predict_matrix` matches `predict` row by row |
 
 Three of these are worth calling out, because each one guards a failure that would

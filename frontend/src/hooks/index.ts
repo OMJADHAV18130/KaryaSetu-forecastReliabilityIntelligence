@@ -45,14 +45,6 @@ export function useRiskAreas(day: number, threshold: number = 0.5) {
   });
 }
 
-export function useVerification() {
-  return useQuery({
-    queryKey: ['verification'],
-    queryFn: api.getVerification,
-    staleTime: 60000,
-  });
-}
-
 export function useGlobalExplanation() {
   return useQuery({
     queryKey: ['globalExplanation'],

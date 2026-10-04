@@ -139,58 +139,6 @@ export interface LocationExplanation {
   message?: string;
 }
 
-export interface VerificationResult {
-  latitude: number;
-  longitude: number;
-  lead_hours: number;
-  forecast_rainfall: number;
-  reference_rainfall: number;
-  absolute_error: number;
-  bust_threshold: number;
-  bust_status: boolean;
-  day: number;
-}
-
-/**
- * Per-location forecast-versus-observation rows.
- *
- * Empty with `available: false` unless a real archive is attached. The backend
- * never returns illustrative rows, because a measurement pair that was never
- * taken is indistinguishable from a real one once it reaches the screen.
- */
-export interface VerificationArchive {
-  available: boolean;
-  results: VerificationResult[];
-  message?: string;
-  /** Field documentation, returned so an operator knows what to supply. */
-  expected_record_shape?: Record<string, string>;
-  reference_dataset?: string | null;
-  total_points?: number;
-  bust_count?: number;
-  reliable_count?: number;
-}
-
-/**
- * Measured skill of the tuned model on the September 2019 held-out test set.
- *
- * Only `available` and `message` are declared here, because that is all the UI
- * consumes. The endpoint also serves the confusion matrix, discrimination and
- * calibration scores, and the threshold sweep; those are published in the project
- * README instead of being rendered, so there is one copy of them rather than two
- * that could drift apart. See the backend `ModelSkill` schema for the full shape.
- */
-export interface ModelSkill {
-  available: boolean;
-  message?: string | null;
-}
-
-export interface VerificationResponse {
-  /** What was actually measured. */
-  model_skill: ModelSkill;
-  /** Per-location comparison rows, empty unless an archive is attached. */
-  archive: VerificationArchive;
-}
-
 export interface HealthStatus {
   status: string;
   model_loaded: boolean;

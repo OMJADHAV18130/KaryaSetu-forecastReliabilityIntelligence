@@ -85,7 +85,7 @@ src/
 │   │                              # Loading / Unavailable blocks
 │   ├── LocationAnalysis.tsx       # probability + day curve + input table
 │   └── ModelInputTable.tsx
-├── pages/                         # 8 routes, one file each
+├── pages/                         # 7 routes, one file each
 ├── data/
 │   ├── districtIndex.ts           # 755 districts, search index
 │   ├── indianDistricts.ts         # reference cells + IDW helper
@@ -117,7 +117,6 @@ scripts/
 | `/search` | Location Search | `Search.tsx` | Any of 723 districts, or a typed coordinate |
 | `/time-series` | Time Series | `TimeSeries.tsx` | Ten lead days at a coordinate, with per-day inputs |
 | `/bust-detection` | Bust Detection | `BustDetection.tsx` | Ranked grid cells above the threshold + clustered areas |
-| `/verification` | Verification | `Verification.tsx` | Prose status page: what was verified, and what needs observations |
 | `/explainability` | Explainability | `Explainability.tsx` | Mean \|SHAP\| globally; per-coordinate attribution |
 | `/settings` | Settings | `Settings.tsx` | Theme only |
 
@@ -176,10 +175,9 @@ network round-trip.
 | `GET /api/bust-risk/areas` | Bust Detection (clustered areas) |
 | `GET /api/explanation/global` | Explainability (global table) |
 | `GET /api/explanation/location` | Explainability (per-coordinate) |
-| `GET /api/verification` | Verification |
 
-`GET /api/historical-events` has no page. It is kept alongside
-`/api/model-performance` for direct API consumers only.
+`GET /api/verification` and `GET /api/historical-events` have no pages. Both are
+kept alongside `/api/model-performance` for direct API consumers only.
 
 `POST /api/predict` is exported from `api.ts` for direct feature-vector scoring. No
 page calls it, because no page has a reason to hand-build a feature vector when the
@@ -226,21 +224,16 @@ consumers. `/api/model-performance` returns `held_out_test_set` and
 September 2019 evaluation on data the model never saw, the second is what the
 booster this API loaded measures on its own fitting data. No page renders either.
 
-**`/api/verification`** returns two halves. `model_skill` is the measured
-evidence: the September 2019 held-out confusion matrix, ROC-AUC / PR-AUC / MCC /
-Brier, and the 17-point threshold sweep. It is served unchanged from
+**`/api/verification`** has no page and no client function. It returns two halves
+for direct API consumers. `model_skill` is the measured evidence: the September
+2019 held-out confusion matrix, ROC-AUC / PR-AUC / MCC / Brier, and the 17-point
+threshold sweep. It is served unchanged from
 `backend/models/notebook_evaluation.json` and carries a `provenance` string,
 because a fixed historical evaluation must not read as a live operational
 statistic. `archive` returns `available: false`, a reason, and
 `expected_record_shape`: no forecast/observation archive is configured in this
 deployment, and an empty table would read as "nothing happened" rather than
 "nothing to show". `/api/historical-events` behaves the same way.
-
-The Verification page reads only `available` and `message` from `model_skill`. The
-figures themselves are written up in the project README rather than rendered, so
-there is one copy of them instead of two that could drift apart. That is also why
-the frontend `ModelSkill` type declares only those two fields; see the backend
-schema for the full response shape.
 
 ---
 
@@ -252,8 +245,7 @@ fixture value can be mistaken for model output.
 
 Three things report themselves unavailable in mock mode rather than substituting a
 number, because they genuinely need the model: the loaded-artifact evaluation, SHAP
-attribution, and model identity. The transcribed September 2019 figures stay
-readable, since they are a static record rather than a live computation.
+attribution, and model identity.
 
 ---
 
