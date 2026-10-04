@@ -163,21 +163,6 @@ export interface VerificationResponse {
   reliable_count?: number;
 }
 
-/**
- * Model identity as reported by the loaded artifact. The UI reads this rather
- * than restating the version or feature list, so the two cannot drift apart.
- */
-export interface ModelInfo {
-  model_version: string;
-  model_type: string;
-  feature_count: number;
-  features: string[];
-  is_ready: boolean;
-  calibration_loaded: boolean;
-  shap_available: boolean;
-  environment: string;
-}
-
 export interface HealthStatus {
   status: string;
   model_loaded: boolean;

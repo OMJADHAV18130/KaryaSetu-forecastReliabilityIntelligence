@@ -433,7 +433,7 @@ export default function DistrictRiskMap({
                    <div><label>Confidence</label><b class="tip-conf">${percent(props.confidence ?? 0)}</b></div>
                    <div><label>Level</label><b>${props.level}</b></div>
                  </div>
-                 <em>Scored by the trained model at this district anchor${(props.sourceDistanceKm ?? 0) > 0 ? `, ${props.sourceDistanceKm}&deg; from the nearest reference cell` : ''}</em>
+                 <em>Scored by the trained model at this district anchor${(props.sourceDistanceKm ?? 0) > 0 ? `, ${props.sourceDistanceKm} km from the nearest reference cell` : ''}</em>
                </div>`
               : `<div class="district-tip">
                  <b>${props.district} District</b>

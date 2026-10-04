@@ -6,7 +6,7 @@ AI-based forecast bust detection platform that adds a reliability layer over med
 
 ## Project Overview
 
-KaryaSetu is a full-stack research prototype for detecting rainfall forecast busts (large forecast errors) in medium-range weather forecasts (Day 1–Day 10). It uses a trained XGBoost classifier with sigmoid calibration to predict the probability that a rainfall forecast will have a large error.
+KaryaSetu detects rainfall forecast busts (large forecast errors) in medium-range weather forecasts (Day 1-Day 10). It uses a trained XGBoost classifier with sigmoid calibration to predict the probability that a rainfall forecast will have a large error. Every probability shown on screen is a real evaluation of that trained booster at the coordinate being displayed.
 
 ### Core Pipeline
 
@@ -50,8 +50,22 @@ map is the default view; the original grid map is kept intact alongside it:
 
 | View | Contents |
 | --- | --- |
-| **Bust Risk Map** (default) | A district-level choropleth of all 755 Census 2011 districts, filled with the continuous bust-probability / confidence colour scale, with a threshold legend, the highest-bust-risk district ranking, and hover/click inspection. |
-| **Grid Map** | The trained 5.625° model-grid anchors, the major district station pins, the optional coarse grid-cell bounds, and free hover/click inspection at any coordinate. |
+| **Bust Risk Map** (default) | A district-level choropleth of all 723 districts, each filled with **its own trained-model evaluation at that district's anchor coordinate**, on the continuous bust-probability / confidence colour scale. Carries a threshold legend, the highest-bust-risk district ranking, and district-wise hover/click inspection. |
+| **Grid Map** | The trained 5.625° model-grid anchors, the major station pins (each also a real per-coordinate model evaluation), the optional coarse grid-cell bounds, and free hover/click inspection at any coordinate. |
+
+No value on either map is interpolated between neighbours or substituted to fill a
+gap. The model's *inputs* are interpolated from the 19-cell reference grid, and both
+views say so; the risk value itself is whatever the booster returned for that point.
+A district the model could not score — Nicobars sits at 7.03°N, below the 8°N
+training floor — is drawn in the neutral no-data style and reads "Outside the domain
+the model was trained on" rather than borrowing a number.
+
+Hover on the bust risk map is **district-wise only**. The committed boundary file
+also contains one state-wide polygon per state labelled `"<State> (unnamed tract)"`;
+all 32 of those shapes were found to fully contain their state's real named
+districts, so keeping them in made hover flip between a district and a state
+depending on SVG draw order. They are filtered out at load time, which still leaves
+99.68% of the country covered by a named district.
 
 Both views share the same `MapContainer`, so in **both** of them:
 
@@ -190,7 +204,8 @@ Confusion matrix at threshold 0.50: TN 54,511 · FP 8,074 · FN 1,327 · TP 2,68
 Sigmoid calibration is monotonic, so calibrated ROC-AUC and PR-AUC are unchanged;
 the Brier score is the metric calibration improves. F1 peaks earlier, at
 threshold 0.30 (0.4276); at 0.50 precision is 0.6202 and recall 0.2123. The full
-sweep is in `notebook_evaluation.json` and on the Model Scores page.
+sweep is in `backend/models/notebook_evaluation.json` and is served by
+`GET /api/model-performance`; no page in the UI renders it.
 
 #### Which evaluation is which
 
@@ -394,7 +409,66 @@ here, so the two evaluations cannot be read as one number.
 ### GET /api/model-performance
 
 Two evaluations, reported side by side and never merged: `held_out_test_set` and
-`served_artifact`. See [Which evaluation is which](#which-evaluation-is-which).
+`served_artifact`. See [Which evaluation is which](#which-evaluation-is-which). Kept
+for direct API consumers; no page in the UI renders it.
+
+### POST /api/forecast/score-batch
+
+```json
+{
+  "day": 4,
+  "coordinates": [
+    { "latitude": 25.5941, "longitude": 85.1376 },
+    { "latitude": 19.0760, "longitude": 72.8777 }
+  ]
+}
+```
+
+Returns one result per coordinate, **in request order**:
+
+```json
+{
+  "day": 4,
+  "lead_hours": 96,
+  "model_version": "xgb-rainfall-bust-v2",
+  "count": 2,
+  "derivation": {
+    "method": "inverse_distance_interpolation_of_model_inputs",
+    "note": "Each coordinate was scored by the trained model. Model inputs were interpolated from the trained reference grid before scoring; the probability is not itself interpolated."
+  },
+  "results": [
+    {
+      "latitude": 25.5941,
+      "longitude": 85.1376,
+      "bust_probability": 0.8474,
+      "uncalibrated_probability": 0.919582,
+      "calibration_applied": true,
+      "confidence": 0.1526,
+      "confidence_level": "LOW",
+      "region": "Bihar (Gangetic Plains / Patna)",
+      "derivation": {
+        "method": "inverse_distance_interpolation_of_model_inputs",
+        "source_cell": "25.3125N 84.375E",
+        "distance_km": 82.7,
+        "neighbour_count": 4
+      }
+    }
+  ]
+}
+```
+
+This is what the maps use instead of computing anything client-side. Each coordinate
+goes through the same path as `/api/forecast/location` — build the model inputs,
+then let the loaded booster score them — and returns the identical
+`bust_probability`, which `backend/tests/test_map_scoring.py` asserts coordinate by
+coordinate. Only the call pattern differs: 722 districts cost one booster pass and
+one calibrator pass rather than 1,444 of them.
+
+Rejected with **422**: an empty coordinate list, more than 1,500 coordinates, a day
+outside 1–10, a coordinate outside the trained 8°N–37°N / 68°E–98°E domain, NaN, or
+infinity. NaN is called out separately because it survives a naive range check —
+`nan < 8.0` and `nan > 37.0` are both false — and would otherwise reach the model
+and return a probability for a coordinate that does not exist.
 
 ## Project Structure
 
@@ -431,9 +505,8 @@ project-root/
 │   │   │   │                           # ProbabilityStat, Loading/Unavailable blocks
 │   │   │   ├── LocationAnalysis.tsx
 │   │   │   └── ModelInputTable.tsx
-│   │   ├── pages/                      # 10 routes, one file each
-│   │   ├── data/                       # districtIndex, indianDistricts,
-│   │   │                               # notebookEvaluation (offline copy)
+│   │   ├── pages/                      # 9 routes, one file each
+│   │   ├── data/                       # districtIndex, indianDistricts
 │   │   ├── lib/                        # theme.tsx, riskScale.ts
 │   │   ├── services/api.ts             # Single API client + mock fixtures
 │   │   ├── hooks/index.ts
@@ -442,7 +515,9 @@ project-root/
 │   │   └── index.css                   # Theme tokens in :root / .dark
 │   ├── public/
 │   │   ├── india_boundary_corrections.pmtiles
-│   │   ├── india-districts.geojson     # 755 districts, simplified
+│   │   ├── india-districts.geojson     # 723 districts, simplified
+│   │   │                               # (+ 32 state-shaped "unnamed tract"
+│   │   │                               #  features, filtered out at load)
 │   │   └── india-states.geojson
 │   ├── scripts/
 │   │   └── build-district-geojson.mjs
@@ -594,27 +669,28 @@ To switch modes, set `VITE_API_MODE` in `frontend/.env`.
 Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → VERIFY:
 
 1. **Overview** — the day-4 picture: how much of the area is in each confidence band
-2. **Bust Risk Map** — the district choropleth, with the grid map one click away.
-   Change the day from D1 to D10 and watch the highest-risk ranking reorder
+2. **Bust Risk Map** — the district choropleth. Every one of the 723 districts is its
+   own model evaluation at that district's anchor, so hover a district and read the
+   probability the booster returned for that coordinate, then change the day from D1
+   to D10 and watch the highest-risk ranking reorder. The grid map is one click away
 3. **Bust Detection** — the ranked list of cells above the probability threshold,
    with the clustered error-prone areas
-4. **Location Search** — search any of the 755 districts (try Pune, Guwahati,
+4. **Location Search** — search any of the 723 districts (try Pune, Guwahati,
    Bikaner) or type a coordinate. The result shows the bust probability, the exact
    inputs behind it, and the day-by-day curve
 5. **Time Series** — click the map to move the coordinate, then step the day slider.
    The input table changes with the day, because lead time is a model input
 6. **Explainability** — the mean |SHAP| ranking across the background sample, then
-   the per-coordinate diverging bars for the same point, with direction
-7. **Model Scores** — the September 2019 held-out figures, the confusion matrix,
-   the Brier improvement from calibration, and the threshold sweep showing F1
-   peaking at 0.30
-8. **Verification** and **Case Archive** — both say DATA NOT AVAILABLE and explain
+   the per-coordinate diverging bars for the same point, with direction and the
+   checksum that proves the bars rebuild the number above them
+7. **Verification** and **Case Archive** — both say DATA NOT AVAILABLE and explain
    the record shape they would need. That is the intended result, not a stub
-9. **Toggle the theme** — light is the default; the map canvas stays dark in both
+8. **Settings** — toggle the theme; light is the default, the map canvas stays dark
+   in both
 
 ## Research Limitations
 
-1. **Research Prototype**: This is a research prototype, not an operational forecasting system
+1. **Not Operational**: This is not an operational forecasting system
 2. **Limited Domain**: Trained on WeatherBench2 HRES/ERA5 for India region only
 3. **Single Variable**: Demonstrates rainfall forecast bust detection only — not temperature, pressure, or other variables
 4. **Research Data**: Uses WeatherBench2 research data, not operational NWP forecasts
@@ -624,7 +700,7 @@ Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → 
 
 ## Scientific Scope Disclaimer
 
-**This is a research prototype for rainfall forecast bust detection only.**
+**This covers rainfall forecast bust detection only.**
 
 The current trained implementation specifically demonstrates:
 - Rainfall forecast bust detection
@@ -648,7 +724,7 @@ the notebook evaluated — see [Which evaluation is which](#which-evaluation-is-
 
 ```bash
 cd backend
-pytest tests/          # 80 tests
+pytest tests/          # 97 tests
 ```
 
 ```bash
@@ -667,6 +743,7 @@ could not check that.
 | `tests/test_probability_contract.py` | `confidence = 1 - bust_probability`, `day = lead_hours / 24`, band boundaries, determinism, per-day model inputs |
 | `tests/test_validation.py` | NaN, infinity, out-of-domain and missing features are all rejected; a 422 never carries a number |
 | `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability |
+| `tests/test_map_scoring.py` | Batch scoring equals single-point scoring coordinate by coordinate; values actually vary with position; NaN, infinity, out-of-domain, empty, oversized and bad-day requests are all rejected; `predict_matrix` matches `predict` row by row |
 
 Three of these are worth calling out, because each one guards a failure that would
 otherwise be invisible:
@@ -699,4 +776,4 @@ otherwise be invisible:
 
 ## License
 
-Research prototype for academic and demonstration purposes.
+For academic and demonstration purposes.

@@ -15,7 +15,6 @@ import type {
   GlobalExplanation,
   LocationExplanation,
   VerificationResponse,
-  ModelInfo,
   HealthStatus,
   LocationDetail,
   HistoricalEventsResponse,
@@ -406,29 +405,6 @@ export async function getVerification(): Promise<VerificationResponse> {
     };
   }
   const { data } = await apiClient.get('/api/verification');
-  return data;
-}
-
-/**
- * Model identity as reported by the backend: version, feature count and the
- * exact names it reads. Read from the loaded artifact rather than restated in
- * the client, so the UI cannot drift from the model that is actually running.
- */
-export async function getModelInfo(): Promise<ModelInfo> {
-  if (API_MODE === 'mock') {
-    // Nothing is loaded offline, so no version or artifact facts are claimed.
-    return {
-      model_version: 'not loaded in mock mode',
-      model_type: 'XGBoost classifier, sigmoid calibration',
-      feature_count: 0,
-      features: [],
-      is_ready: false,
-      calibration_loaded: false,
-      shap_available: false,
-      environment: 'mock',
-    };
-  }
-  const { data } = await apiClient.get('/api/model-info');
   return data;
 }
 

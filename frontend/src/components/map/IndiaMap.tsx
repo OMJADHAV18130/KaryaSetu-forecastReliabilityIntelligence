@@ -691,7 +691,7 @@ export default function IndiaMap({
                     <em>
                       Scored by the trained model at this coordinate
                       {score.derivation?.distance_km
-                        ? `, ${score.derivation.distance_km}° from the nearest reference cell`
+                        ? `, ${score.derivation.distance_km} km from the nearest reference cell`
                         : ''}
                     </em>
                   </div>

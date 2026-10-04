@@ -1,12 +1,12 @@
 # KaryaSetu — Frontend
 
-Research prototype. Rainfall forecast bust detection, Day 1–10, over the India
-region.
+Rainfall forecast bust detection, Day 1-10, over the India region.
 
-> **Research prototype.** Every probability on screen is an evaluation of the
-> trained booster, made by the backend. Scores on the Model Scores page come from a
-> September 2019 held-out test set and are not operational statistics. Anything
-> served without a model is labelled **DEMO DATA**.
+> Every probability on screen is an evaluation of the trained booster, made by
+> the backend at that exact coordinate. Nothing is inferred in the browser and
+> nothing is filled in to cover a gap: a place the model did not score shows
+> **DATA NOT AVAILABLE**, and anything served without a model is labelled
+> **DEMO DATA**.
 
 ---
 
@@ -108,20 +108,19 @@ scripts/
 
 ---
 
-## The ten pages
+## The nine pages
 
 | Route | Page | File | What it shows |
 | --- | --- | --- | --- |
 | `/` | Overview | `Overview.tsx` | Area-by-confidence-band summary for the selected day |
 | `/map` | Bust Risk Map | `ForecastMap.tsx` | Both map views: district choropleth (default) and the trained grid |
-| `/search` | Location Search | `Search.tsx` | Any of 755 districts, or a typed coordinate |
+| `/search` | Location Search | `Search.tsx` | Any of 723 districts, or a typed coordinate |
 | `/time-series` | Time Series | `TimeSeries.tsx` | Ten lead days at a coordinate, with per-day inputs |
 | `/bust-detection` | Bust Detection | `BustDetection.tsx` | Ranked grid cells above the threshold + clustered areas |
 | `/verification` | Verification | `Verification.tsx` | Forecast vs observed rainfall |
 | `/explainability` | Explainability | `Explainability.tsx` | Mean \|SHAP\| globally; per-coordinate attribution |
-| `/model-performance` | Model Scores | `ModelPerformance.tsx` | September 2019 held-out figures, confusion matrix, threshold sweep |
 | `/historical` | Case Archive | `HistoricalEvents.tsx` | Stored historical cases |
-| `/settings` | Settings | `Settings.tsx` | Model identity and artifact load status |
+| `/settings` | Settings | `Settings.tsx` | Theme only |
 
 Any unrecognised path falls through to Overview, so a mistyped URL lands somewhere
 useful rather than on a blank screen.
@@ -132,15 +131,31 @@ useful rather than on a blank screen.
 
 One `MapContainer` holds both layers, with the **Bust Risk Map** as the default:
 
-- **Bust Risk Map** — all 755 Census 2011 districts shaded by the continuous
-  confidence / bust-probability scale. Values are inverse-distance interpolations of
-  the trained grid, and the map says so on its face. District fills render in a
-  custom Leaflet pane (`districtRisk`) so they sit above the basemap but below the
-  boundary overlay.
-- **Grid Map** — the original view: trained grid anchors, district pins, optional
-  grid bounds, hover and click inspection.
+- **Bust Risk Map** — all 723 districts shaded by the continuous confidence /
+  bust-probability scale. **Every district is a separate evaluation of the trained
+  booster at that district's own anchor coordinate**, fetched in one batch from
+  `POST /api/forecast/score-batch`. No district borrows a neighbour's number. The
+  model's *inputs* are interpolated from the reference grid, and the map says so;
+  the risk value itself is not. District fills render in a custom Leaflet pane
+  (`districtRisk`) so they sit above the basemap but below the boundary overlay.
+- **Grid Map** — the original view: trained grid anchors, station pins, optional
+  grid bounds, hover and click inspection. Pins are likewise real per-coordinate
+  model evaluations, not interpolated estimates.
 
 Both keep the boundary-corrector tile layer and the boundary overlay active.
+
+Hover is **district-wise only**. The committed boundary file also carries one
+state-wide polygon per state, named `"<State> (unnamed tract)"`; sampling showed
+every one of those 32 shapes fully contains that state's real named districts, so
+leaving them in made the tooltip flip between a district and something that read
+like a state, depending on SVG draw order. They are filtered out at load time
+(`DistrictRiskMap.tsx`). Removing them still leaves **99.68%** of the country
+covered by a named district, so nothing opens into holes.
+
+The one district that cannot be scored is **Nicobars**, at 7.03°N — south of the
+model's 8°N training floor. It is held out of the batch, drawn in the neutral
+no-data style, and its tooltip reads "Outside the domain the model was trained on"
+rather than borrowing a value.
 
 The district boundaries are simplified from Census 2011 with Douglas–Peucker at
 0.02° and committed as a 471 kB asset, so the choropleth loads without a
@@ -152,9 +167,8 @@ network round-trip.
 
 | Endpoint | Used by |
 | --- | --- |
-| `GET /api/health` | Layout / Settings |
-| `GET /api/model-info` | Settings (identity only — it carries no metrics) |
-| `GET /api/model-performance` | Model Scores |
+| `GET /api/health` | Layout (model-loaded indicator) |
+| `POST /api/forecast/score-batch` | Bust Risk Map (district choropleth), Grid Map (station pins) |
 | `GET /api/forecast/overview` | Overview |
 | `GET /api/forecast/map` | Bust Risk Map |
 | `GET /api/forecast/location` | Search, LocationAnalysis |
@@ -197,11 +211,19 @@ is 1..n, ordered descending.
 once at the top level. Lead time is itself a model input, so day 4 and day 7 are
 different vectors; a single shared block would be wrong for nine of the ten points.
 
-**`/api/model-performance`** returns `held_out_test_set` and `served_artifact` side
-by side and never merges them. The first is the notebook's September 2019 evaluation
-on data the model never saw. The second is what the booster this API loaded measures
-on its own fitting data, and is not a generalisation score. `/api/model-info`
-deliberately repeats neither, so the two cannot be read as one number.
+**`/api/forecast/score-batch`** is the reason no map value is invented here. It takes
+`{ day, coordinates: [{ latitude, longitude }] }` and runs the loaded booster once
+per coordinate, returning the same `bust_probability` the single-point endpoint
+returns for that exact coordinate — the two are asserted equal in
+`backend/tests/test_map_scoring.py`. NaN, infinity, an out-of-domain coordinate, an
+empty list, a day outside 1–10 and an oversized batch all return 422 rather than a
+clamped-looking answer.
+
+The backend keeps `/api/model-performance` and `/api/model-info` for direct
+consumers. `/api/model-performance` returns `held_out_test_set` and
+`served_artifact` side by side and never merges them: the first is the notebook's
+September 2019 evaluation on data the model never saw, the second is what the
+booster this API loaded measures on its own fitting data. No page renders either.
 
 **`/api/verification`** and **`/api/historical-events`** return `available: false`,
 a reason, and `expected_record_shape`. No archive is configured in this deployment,
@@ -246,5 +268,5 @@ surface, because a light basemap under dark district fills is unreadable.
 
 ---
 
-Research prototype. Not an operational forecasting system. No government logos,
-emblems or official measurements are used.
+Not an operational forecasting system. No government logos, emblems or official
+measurements are used.
