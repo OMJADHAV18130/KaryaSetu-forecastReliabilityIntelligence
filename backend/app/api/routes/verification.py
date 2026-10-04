@@ -1,8 +1,11 @@
 """
 Verification and historical case endpoints.
 
-Both return ``available = false`` with an explanation unless an archive file is
-attached — see :mod:`app.services.verification_service` for the record shapes.
+``/api/verification`` returns two clearly separated halves: ``model_skill``, the
+measured September 2019 held-out test-set figures transcribed from the training
+notebook, and ``archive``, the per-location forecast-versus-observation rows,
+which report ``available = false`` unless an archive file is attached. See
+:mod:`app.services.verification_service` for both record shapes.
 """
 
 from fastapi import APIRouter
@@ -14,11 +17,13 @@ router = APIRouter()
 @router.get("/api/verification")
 async def get_verification():
     """
-    Compare stored medium-range forecasts against measured rainfall.
+    Measured model skill, plus the forecast/observation archive when attached.
 
-    Returns an empty result set with ``available = false`` when no verification
-    archive is attached. The September 2019 held-out skill figures served by
-    ``/api/model-performance`` are unaffected and remain available.
+    ``model_skill`` reports the tuned model's confusion matrix, discrimination
+    scores, calibration effect and threshold sweep on the September 2019 held-out
+    test set — a fixed historical evaluation, not live operational statistics.
+    ``archive`` returns an empty result set with ``available = false`` when no
+    verification archive is attached.
     """
     return verification_service.get_verification()
 

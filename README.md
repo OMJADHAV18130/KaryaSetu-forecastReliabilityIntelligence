@@ -389,10 +389,20 @@ importance table.
 
 ### GET /api/verification
 
-Forecast vs reference comparison. Returns `available: false` with a message and the
-`expected_record_shape` it would need, because no forecast/observation archive is
-bundled with this prototype. Point `VERIFICATION_ARCHIVE_PATH` at a JSON file of
-real records to populate it.
+Returns two halves that are deliberately kept apart.
+
+`model_skill` is the measured verification the prototype can show: the confusion
+matrix, ROC-AUC, PR-AUC, MCC, Brier before and after calibration, and the 17-point
+threshold sweep, all from the September 2019 held-out test set. Every figure is
+transcribed from the notebook's own printed output into
+`models/notebook_evaluation.json` and is served unchanged. It carries a
+`provenance` string, because these are recorded results from a fixed historical
+evaluation and must not be read as live operational statistics.
+
+`archive` is the per-location forecast-versus-observation comparison. It returns
+`available: false` with a message and the `expected_record_shape` it would need,
+because no forecast/observation archive is bundled with this prototype. Point
+`VERIFICATION_ARCHIVE_PATH` at a JSON file of real records to populate it.
 
 ### GET /api/historical-events
 
@@ -624,7 +634,7 @@ python train_model.py
 | CALIBRATOR_PATH | models/calibration/calibrator.joblib | Path to the sigmoid calibrator |
 | SHAP_BACKGROUND_PATH | models/shap/background_data.joblib | Path to the SHAP background sample |
 | FEATURE_SCHEMA_PATH | models/feature_schema.json | Feature names, order and domains |
-| VERIFICATION_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for the Verification page |
+| VERIFICATION_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for the per-location half of `/api/verification` |
 | CASE_ARCHIVE_PATH | *(unset)* | Optional. JSON archive for `GET /api/historical-events` |
 | CORS_ORIGINS | http://localhost:5173,... | Allowed CORS origins |
 
@@ -658,9 +668,12 @@ a backend.
   no fixture value can be mistaken for model output
 - The model is not loaded, so anything that genuinely needs it reports itself
   unavailable rather than substituting a number: the loaded-artifact evaluation,
-  SHAP attribution, and model identity. The transcribed September 2019 figures are
-  still readable, because they are a static record rather than a live computation
-- Verification stays unavailable, exactly as in live mode
+  SHAP attribution, and model identity
+- The transcribed September 2019 figures are served from static JSON rather than
+  recomputed, so `model_skill` is reported unavailable here: reproducing them as
+  fixtures would create a second copy that could drift from the notebook record.
+  Switch to live mode to read them
+- The per-location verification archive stays unavailable, exactly as in live mode
 
 To switch modes, set `VITE_API_MODE` in `frontend/.env`.
 
@@ -683,8 +696,13 @@ Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → 
 6. **Explainability** — the mean |SHAP| ranking across the background sample, then
    the per-coordinate diverging bars for the same point, with direction and the
    checksum that proves the bars rebuild the number above them
-7. **Verification** - says DATA NOT AVAILABLE and explains the record shape it would
-   need. That is the intended result, not a stub
+7. **Verification** — the real evidence: the September 2019 held-out confusion
+   matrix, the discrimination and calibration scores, and the threshold sweep with
+   its F1 peak marked. The provenance banner sits above all of it, because these
+   are recorded results from a fixed historical evaluation rather than live
+   operational statistics. The per-location forecast-vs-observation half below it
+   says DATA NOT AVAILABLE and explains the record shape it would need — that part
+   is the intended result, not a stub
 8. **Settings** — toggle the theme; light is the default, the map canvas stays dark
    in both
 
@@ -694,7 +712,10 @@ Roughly three minutes, following DETECT → LOCATE → QUANTIFY → EXPLAIN → 
 2. **Limited Domain**: Trained on WeatherBench2 HRES/ERA5 for India region only
 3. **Single Variable**: Demonstrates rainfall forecast bust detection only — not temperature, pressure, or other variables
 4. **Research Data**: Uses WeatherBench2 research data, not operational NWP forecasts
-5. **Verification Not Connected**: Reference observations are not yet connected; verification returns "not available"
+5. **No Operational Verification**: Model skill is measured once, offline, on the
+   September 2019 held-out test set. Confirming an individual bust needs a
+   forecast/observation archive, and none is attached, so the per-location half of
+   the Verification page reports itself unavailable
 6. **No Real-Time Data**: Does not process live NWP forecasts or real-time observations
 7. **Grid Resolution**: Uses coarse 64×32 equiangular grid (~5.625° resolution)
 
@@ -724,7 +745,7 @@ the notebook evaluated — see [Which evaluation is which](#which-evaluation-is-
 
 ```bash
 cd backend
-pytest tests/          # 97 tests
+pytest tests/          # 101 tests
 ```
 
 ```bash
@@ -742,7 +763,7 @@ could not check that.
 | `tests/conftest.py` | Shared fixtures, plus a recursive NaN/Inf check over every response |
 | `tests/test_probability_contract.py` | `confidence = 1 - bust_probability`, `day = lead_hours / 24`, band boundaries, determinism, per-day model inputs |
 | `tests/test_validation.py` | NaN, infinity, out-of-domain and missing features are all rejected; a 422 never carries a number |
-| `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability |
+| `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability; the Verification page serves real measured skill and never labels it live |
 | `tests/test_map_scoring.py` | Batch scoring equals single-point scoring coordinate by coordinate; values actually vary with position; NaN, infinity, out-of-domain, empty, oversized and bad-day requests are all rejected; `predict_matrix` matches `predict` row by row |
 
 Three of these are worth calling out, because each one guards a failure that would

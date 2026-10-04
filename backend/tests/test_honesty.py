@@ -15,15 +15,26 @@ from conftest import assert_no_nan
 
 # Endpoints that have no data source in this deployment. Each must say so rather
 # than returning an empty list that reads as "nothing happened".
+#
+# ``/api/verification`` is listed by the half that is genuinely absent. Its other
+# half, ``model_skill``, carries the transcribed September 2019 figures and is
+# checked separately below.
 UNAVAILABLE_ENDPOINTS = [
     "/api/verification",
     "/api/historical-events",
 ]
 
 
+def _absent_half(body: dict, path: str) -> dict:
+    """The part of a response that has no data source in this deployment."""
+    if path == "/api/verification":
+        return body["archive"]
+    return body
+
+
 @pytest.mark.parametrize("path", UNAVAILABLE_ENDPOINTS)
 def test_absent_data_is_reported_absent(client, path):
-    body = client.get(path).json()
+    body = _absent_half(client.get(path).json(), path)
 
     assert body["available"] is False, f"{path} claimed data is available"
     assert body["message"], f"{path} gave no reason for being unavailable"
@@ -40,6 +51,95 @@ def test_unavailable_messages_are_not_placeholder_numbers(client):
         text = client.get(path).text.lower()
         for banned in ("placeholder", "dummy", "sample data", "demo data", "tbd"):
             assert banned not in text, f"{path} message mentions {banned!r}"
+
+
+def test_verification_serves_real_measured_skill(client, notebook_evaluation):
+    """
+    The Verification page must show evidence that was actually measured.
+
+    This is the guard against the page going back to being empty. Every figure
+    here is compared against the transcribed notebook record, so a number that
+    drifts from what the notebook printed fails the build rather than reaching
+    the screen.
+    """
+    skill = client.get("/api/verification").json()["model_skill"]
+    record = notebook_evaluation["held_out_test_metrics"]
+
+    assert skill["available"] is True, "no measured skill is being served"
+    for field in (
+        "roc_auc",
+        "pr_auc",
+        "mcc",
+        "brier_raw",
+        "brier_calibrated",
+        "n_samples",
+        "n_bust",
+        "operating_threshold",
+    ):
+        assert skill[field] == record[field], f"model_skill.{field} was altered"
+
+    for cell, value in record["confusion_matrix"].items():
+        assert skill["confusion_matrix"][cell] == value, f"matrix cell {cell} was altered"
+
+    assert skill["threshold_sweep"]["rows"] == notebook_evaluation["threshold_sweep"]["rows"]
+    assert_no_nan(skill, "/api/verification model_skill")
+
+
+def test_reported_precision_and_recall_follow_from_the_confusion_matrix(client):
+    """The two derived shares must be arithmetic on the published cells."""
+    skill = client.get("/api/verification").json()["model_skill"]
+    matrix = skill["confusion_matrix"]
+    tn, fp = matrix["true_negatives"], matrix["false_positives"]
+    fn, tp = matrix["false_negatives"], matrix["true_positives"]
+
+    assert tn + fp + fn + tp == skill["n_samples"], "matrix does not account for every sample"
+    assert fn + tp == skill["n_bust"], "positives do not match the reported bust count"
+
+    # Precision divides by what was predicted a bust, recall by what actually was.
+    assert skill["precision_at_threshold"] == pytest.approx(tp / (fp + tp), abs=1e-6)
+    assert skill["recall_at_threshold"] == pytest.approx(tp / (fn + tp), abs=1e-6)
+
+    # And they must agree with the rounded figures in the printed report.
+    report = skill["classification_report"]
+    assert skill["precision_at_threshold"] == pytest.approx(report["precision"], abs=0.01)
+    assert skill["recall_at_threshold"] == pytest.approx(report["recall"], abs=0.01)
+
+
+def test_threshold_sweep_f1_peak_is_where_the_notebook_says(client, notebook_evaluation):
+    """The chart's highlighted peak must be the real peak, not a tidy-looking one."""
+    skill = client.get("/api/verification").json()["model_skill"]
+    rows = skill["threshold_sweep"]["rows"]
+
+    best = max(rows, key=lambda r: r["f1"])
+    expected = max(notebook_evaluation["threshold_sweep"]["rows"], key=lambda r: r["f1"])
+
+    assert best["threshold"] == expected["threshold"], "the F1 peak moved"
+    assert best["f1"] == expected["f1"], "the peak F1 was altered"
+    # And it is a genuine interior peak, not the first or last row.
+    assert 0 < rows.index(best) < len(rows) - 1, "the peak sits at an end of the sweep"
+
+
+def test_measured_skill_is_never_labelled_as_live(client):
+    """
+    A fixed historical evaluation must not read as a running total.
+
+    The figures are real, so the failure mode here is not fabrication but
+    mislabelling: a reader taking them for live operational statistics.
+    """
+    skill = client.get("/api/verification").json()["model_skill"]
+
+    assert skill["label"], "the evaluation is not named"
+    assert "September 2019" in skill["label"], skill["label"]
+    assert skill["provenance"], "no provenance statement is attached to the figures"
+
+    provenance = skill["provenance"].lower()
+    assert "september 2019 test set" in provenance
+    assert "not live operational statistics" in provenance
+
+    # The label itself must not carry a live-sounding word.
+    label = skill["label"].lower()
+    for banned in ("live", "real-time", "realtime", "current", "ongoing", "today"):
+        assert banned not in label, f"label {skill['label']!r} reads as live"
 
 
 def test_held_out_figures_match_the_notebook_record(client, notebook_evaluation):
