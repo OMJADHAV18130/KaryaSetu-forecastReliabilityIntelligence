@@ -1,6 +1,20 @@
 """
 Centralized feature schema for the XGBoost bust detection model.
-Exact feature ordering from Untitled9.ipynb Cell 35.
+
+Two distinct things live here, and they must not be confused.
+
+``FEATURE_COLUMNS``
+    The 12 features the served booster actually reads, in the exact positional
+    order it was fitted with. The artifact's ``feature_names`` list is empty, so
+    position *is* the identity: reordering these silently corrupts every
+    prediction instead of raising. Nothing here may reorder or extend this list
+    without a matching retrained artifact.
+
+``DESIGNED_FEATURE_SPEC``
+    The full 19-feature design contract, recorded for reference. Seven of those
+    features have no weight in the booster and are not served; see
+    ``UNIMPLEMENTED_FEATURES`` for which and why. It is documentation, not an
+    input contract.
 """
 
 from typing import Dict, List, Any
@@ -19,6 +33,90 @@ FEATURE_COLUMNS: List[str] = [
     "latitude",
     "lead_hours",
     "bust_pattern_similarity",
+]
+
+# ── The 19-feature design contract ───────────────────────────────────────────
+# Recorded as specified. Groups are listed in the design's own order, which is
+# NOT the served order: it puts longitude before latitude and places
+# bust_pattern_similarity ahead of the structural features.
+DESIGNED_FEATURE_SPEC: Dict[str, Dict[str, Any]] = {
+    "raw_meteorological": {
+        "description": "Forecast meteorological variables",
+        "features": {
+            "total_precipitation_24hr": "Forecast rainfall amount",
+            "2m_temperature": "Surface temperature",
+            "mean_sea_level_pressure": "Surface pressure - synoptic driver",
+            "10m_u_component_of_wind": "Zonal (east-west) wind",
+            "10m_v_component_of_wind": "Meridional (north-south) wind",
+            "specific_humidity_850": "Low-level moisture (850 hPa)",
+            "geopotential_500": "Mid-level steering flow (500 hPa)",
+            "vertical_velocity_500": "Convective instability proxy (500 hPa)",
+        },
+    },
+    "spatial_gradient": {
+        "description": "Spatial gradients. NOT served - see UNIMPLEMENTED_FEATURES",
+        "features": {
+            "mslp_gradient": "Pressure gradient - dynamically active regions",
+            "temp_gradient": "Temperature gradient - frontal boundaries",
+            "geo500_gradient": "Mid-level flow gradient - steering-flow intensity",
+        },
+    },
+    "lead_time_tendency": {
+        "description": "Forecast-to-forecast tendencies. NOT served - see UNIMPLEMENTED_FEATURES",
+        "features": {
+            "mean_sea_level_pressure_tendency": "Pressure evolution rate forecast-to-forecast",
+            "2m_temperature_tendency": "Temperature evolution rate",
+            "geopotential_500_tendency": "Steering-flow evolution rate",
+            "total_precipitation_24hr_tendency": "Rainfall forecast evolution rate",
+        },
+    },
+    "time_series_pattern": {
+        "description": "Time-series pattern features",
+        "features": {
+            "bust_pattern_similarity": "Cosine similarity of the full Day 1-10 trajectory to historical bust archetypes",
+        },
+    },
+    "structural": {
+        "description": "Location and lead time",
+        "features": {
+            "latitude": "Location",
+            "longitude": "Location",
+            "lead_hours": "Forecast lead time (24-240h)",
+        },
+    },
+}
+
+#: Flattened design list, in the design's own order. 19 entries.
+DESIGNED_FEATURES: List[str] = [
+    name
+    for group in DESIGNED_FEATURE_SPEC.values()
+    for name in group["features"]
+]
+
+# ── Features specified in the design but absent from the served booster ──────
+# These 7 have no weight in the 200-tree artifact, were never computed, and
+# appear nowhere in the training notebook. They are named here so the shortfall
+# stays visible instead of being silently forgotten.
+#
+# Two independent reasons they cannot simply be switched on:
+#   1. The booster declares num_feature = 12 and raises on a 19-column input.
+#   2. Their definitions are unspecified - a gradient needs a spatial
+#      neighbourhood and a tendency needs a forecast-to-forecast step, and
+#      neither is recorded anywhere. Computing them would mean guessing at
+#      7 of the 19 model inputs.
+#
+# Serving them requires a refit on the WeatherBench2 splits, after which the
+# transcribed September 2019 figures must be re-derived because they describe
+# the earlier 11-feature notebook run.
+UNIMPLEMENTED_FEATURES: List[Dict[str, str]] = [
+    {
+        "name": name,
+        "group": group_name,
+        "purpose": spec["features"][name],
+    }
+    for group_name, spec in DESIGNED_FEATURE_SPEC.items()
+    if group_name in ("spatial_gradient", "lead_time_tendency")
+    for name in spec["features"]
 ]
 
 # ── Feature metadata for validation and documentation ─────────────────────────

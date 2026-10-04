@@ -138,7 +138,11 @@ Assets and helper:
 | **Lead Time** | 24h–240h (Day 1–Day 10) |
 | **Grid** | 6 × 5 = 30 points (WeatherBench2 HRES) |
 
-### Features (12 total, exact order required)
+### Features (12 served, exact order required)
+
+The feature *design* specifies **19** inputs. The served booster reads **12**. Seven
+specified features have no weight in the artifact and are not served — see
+[Designed but not served](#designed-but-not-served) below.
 
 | # | Feature | Description | Unit |
 |---|---------|-------------|------|
@@ -154,6 +158,54 @@ Assets and helper:
 | 10 | latitude | Latitude | °N |
 | 11 | lead_hours | Forecast lead time | hours |
 | 12 | bust_pattern_similarity | Similarity of the forecast rainfall pattern to known bust patterns | 0–1 |
+
+**Order is load-bearing.** The artifact's `feature_names` list is empty, so a
+column's *position* is the only thing binding it to a weight. Passing these 12 in
+any other order does not raise — it silently returns a different number. The
+booster's own `num_feature` is 12 and it rejects a 19-column input outright.
+
+`bust_pattern_similarity` is retained even though it appears in none of the
+notebook's `feature_cols` lists: it is specified in the feature design, and by mean
+absolute SHAP it is the **second most influential input** to the served model
+(1.017, behind `vertical_velocity_500` at 1.592). Dropping it to reach the
+notebook's 11 features would remove an input the deployed artifact genuinely uses.
+
+#### Designed but not served
+
+The design groups its 19 inputs as 8 raw meteorological variables, 3 spatial
+gradients, 4 lead-time tendencies, 1 time-series pattern feature, and 3 structural
+features. Everything is recorded in `backend/models/feature_schema.json` under
+`designed_feature_spec`. These 7 are specified but **not implemented**:
+
+| Feature | Group | Purpose |
+|---|---|---|
+| `mslp_gradient` | spatial gradient | Pressure gradient — dynamically active regions |
+| `temp_gradient` | spatial gradient | Temperature gradient — frontal boundaries |
+| `geo500_gradient` | spatial gradient | Mid-level flow gradient — steering-flow intensity |
+| `mean_sea_level_pressure_tendency` | lead-time tendency | Pressure evolution rate forecast-to-forecast |
+| `2m_temperature_tendency` | lead-time tendency | Temperature evolution rate |
+| `geopotential_500_tendency` | lead-time tendency | Steering-flow evolution rate |
+| `total_precipitation_24hr_tendency` | lead-time tendency | Rainfall forecast evolution rate |
+
+They appear nowhere in the training notebook or in `train_model.py`, and have no
+weight in the 200-tree artifact. They cannot simply be switched on:
+
+1. The booster declares `num_feature = 12` and raises on a 19-column input.
+2. Their definitions are unspecified. A gradient needs a spatial neighbourhood and
+   a tendency needs a forecast-to-forecast step; neither is recorded anywhere, so
+   computing them would mean guessing at 7 of the 19 model inputs.
+
+Serving them needs a refit on the WeatherBench2 splits — which additionally voids
+the [September 2019 figures](#performance-metrics-september-2019-test-set) below,
+since those describe the earlier 11-feature notebook run and would have to be
+re-derived. `train_model.py --fallback` is **not** a substitute: it generates rows
+from `rng.exponential` / `rng.normal` and an invented `bust_score` formula, so a
+model fitted on it would have no meteorological validity.
+
+`backend/tests/test_feature_contract.py` pins this gap shut: it asserts the served
+width equals the booster's declared width, that the spec still totals 19, that
+12 + 7 = 19 with nothing unaccounted for, and that the 7 names are still absent
+from the notebook.
 
 ### Tuned Hyperparameters
 
@@ -507,7 +559,7 @@ project-root/
 │   │   ├── xgboost_model/model.json
 │   │   ├── calibration/calibrator.joblib
 │   │   ├── shap/background_data.joblib
-│   │   ├── feature_schema.json         # the loaded artifact's own contract
+│   │   ├── feature_schema.json         # 12 served + the 19-feature design spec
 │   │   └── notebook_evaluation.json    # transcribed September 2019 figures
 │   ├── train_model.py                  # Training / refit entry point
 │   ├── requirements.txt
@@ -751,7 +803,7 @@ the notebook evaluated — see [Which evaluation is which](#which-evaluation-is-
 
 ```bash
 cd backend
-pytest tests/          # 101 tests
+pytest tests/          # 112 tests
 ```
 
 ```bash
@@ -769,6 +821,7 @@ could not check that.
 | `tests/conftest.py` | Shared fixtures, plus a recursive NaN/Inf check over every response |
 | `tests/test_probability_contract.py` | `confidence = 1 - bust_probability`, `day = lead_hours / 24`, band boundaries, determinism, per-day model inputs |
 | `tests/test_validation.py` | NaN, infinity, out-of-domain and missing features are all rejected; a 422 never carries a number |
+| `tests/test_feature_contract.py` | Served feature width equals the booster's declared `num_feature`; the design spec still totals 19; 12 served + 7 unserved = 19 with nothing unaccounted for; the 7 unserved names are still absent from the notebook; the JSON artifact records the same shortfall |
 | `tests/test_honesty.py` | Absent data reports itself absent; reported figures match the record; the two evaluations are never merged; attribution reconstructs the probability; `/api/verification` serves real measured skill and never labels it live |
 | `tests/test_map_scoring.py` | Batch scoring equals single-point scoring coordinate by coordinate; values actually vary with position; NaN, infinity, out-of-domain, empty, oversized and bad-day requests are all rejected; `predict_matrix` matches `predict` row by row |
 
