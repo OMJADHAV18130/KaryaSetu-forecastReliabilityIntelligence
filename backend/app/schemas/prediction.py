@@ -1,5 +1,6 @@
 """
 Pydantic schemas for prediction requests and responses.
+Supports all 19 model features from notebookf941b4a0d6.ipynb.
 """
 
 from pydantic import BaseModel, Field, field_validator
@@ -7,7 +8,9 @@ from typing import Optional, List, Literal
 
 
 class PredictionRequest(BaseModel):
-    """Single location prediction request with all 12 model features."""
+    """Single location prediction request with all model features."""
+    model_config = {"populate_by_name": True, "protected_namespaces": ()}
+
     total_precipitation_24hr: float = Field(..., ge=0.0, le=0.5, description="24h precipitation (m)")
     temperature_2m: float = Field(..., ge=200.0, le=330.0, description="2m temperature (K)")
     mean_sea_level_pressure: float = Field(..., ge=90000.0, le=106000.0, description="MSLP (Pa)")
@@ -30,6 +33,15 @@ class PredictionRequest(BaseModel):
             "front of the model."
         ),
     )
+
+    # 7 Extended features from notebookf941b4a0d6.ipynb
+    mslp_gradient: Optional[float] = Field(None, ge=0.0, le=1000.0, description="MSLP spatial gradient (Pa/deg)")
+    temp_gradient: Optional[float] = Field(None, ge=0.0, le=50.0, description="Temperature spatial gradient (K/deg)")
+    geo500_gradient: Optional[float] = Field(None, ge=0.0, le=2000.0, description="Geopotential 500 gradient (m²/s²/deg)")
+    mean_sea_level_pressure_tendency: Optional[float] = Field(None, ge=-5000.0, le=5000.0, description="MSLP tendency (Pa/24h)")
+    temperature_2m_tendency: Optional[float] = Field(None, alias="2m_temperature_tendency", ge=-30.0, le=30.0, description="2m temperature tendency (K/24h)")
+    geopotential_500_tendency: Optional[float] = Field(None, ge=-2000.0, le=2000.0, description="Geopotential 500 tendency (m²/s²/24h)")
+    total_precipitation_24hr_tendency: Optional[float] = Field(None, ge=-2.0, le=2.0, description="Rainfall tendency (m/24h)")
 
     @field_validator("*")
     @classmethod

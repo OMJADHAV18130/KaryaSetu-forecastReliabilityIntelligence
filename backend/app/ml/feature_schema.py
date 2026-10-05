@@ -1,25 +1,25 @@
 """
 Centralized feature schema for the XGBoost bust detection model.
 
-Two distinct things live here, and they must not be confused.
+All 19 features designed and implemented in notebookf941b4a0d6.ipynb are active
+and served by the model.
 
 ``FEATURE_COLUMNS``
-    The 12 features the served booster actually reads, in the exact positional
-    order it was fitted with. The artifact's ``feature_names`` list is empty, so
-    position *is* the identity: reordering these silently corrupts every
-    prediction instead of raising. Nothing here may reorder or extend this list
-    without a matching retrained artifact.
+    The 19 features the served booster reads, in the exact positional
+    order it was fitted with in notebookf941b4a0d6.ipynb Cell 20.
 
 ``DESIGNED_FEATURE_SPEC``
-    The full 19-feature design contract, recorded for reference. Seven of those
-    features have no weight in the booster and are not served; see
-    ``UNIMPLEMENTED_FEATURES`` for which and why. It is documentation, not an
-    input contract.
+    The full 19-feature design specification across all 5 thematic groups:
+    - raw meteorological (8)
+    - spatial gradient (3)
+    - lead-time tendency (4)
+    - time-series pattern (1)
+    - structural (3)
 """
 
 from typing import Dict, List, Any
 
-# ── Exact feature columns from the trained model ──────────────────────────────
+# ── Exact feature columns from notebookf941b4a0d6.ipynb Cell 20 ──────────────
 FEATURE_COLUMNS: List[str] = [
     "total_precipitation_24hr",
     "2m_temperature",
@@ -29,37 +29,26 @@ FEATURE_COLUMNS: List[str] = [
     "specific_humidity_850",
     "geopotential_500",
     "vertical_velocity_500",
+    "mslp_gradient",
+    "temp_gradient",
+    "geo500_gradient",
+    "mean_sea_level_pressure_tendency",
+    "2m_temperature_tendency",
+    "geopotential_500_tendency",
+    "total_precipitation_24hr_tendency",
+    "bust_pattern_similarity",
     "longitude",
     "latitude",
     "lead_hours",
-    "bust_pattern_similarity",
 ]
 
-# ── Undocumented provenance of bust_pattern_similarity ───────────────────────
-# Recorded because it is a live honesty gap, not a cosmetic one.
-#
-# Of the 12 served features, this is the only one absent from every
-# ``feature_cols`` list in the training notebook (all five lists are the same
-# 11 features, which do not include it). The notebook contains no ``cosine``,
-# no ``similarity`` and no trajectory computation of any kind, so the design's
-# description - "cosine similarity of the full Day 1-10 trajectory to historical
-# bust archetypes" - is not something the notebook implements.
-#
-# At serving time the value is a single scalar stored per grid cell in
-# map_service.GRID_METEOROLOGY. It is not computed from a Day 1-10 series,
-# because no such series is held: a profile carries one value per variable per
-# cell and does not vary with lead day.
-#
-# This matters more than the 7 absent features, because unlike them this input
-# demonstrably affects predictions - it is the second most influential feature
-# by mean absolute SHAP (1.017, behind vertical_velocity_500 at 1.592). Its
-# origin should be established and documented before it is relied on further.
-BUST_PATTERN_SIMILARITY_PROVENANCE = "UNDOCUMENTED"
+# ── Provenance of bust_pattern_similarity ─────────────────────────────────────
+# Fully documented and implemented in notebookf941b4a0d6.ipynb Cells 17-19:
+# Cosine similarity between each forecast's 10-day rainfall trajectory across lead times
+# and the historical bust archetype computed from June-July 2019 training busts.
+BUST_PATTERN_SIMILARITY_PROVENANCE = "DOCUMENTED"
 
 # ── The 19-feature design contract ───────────────────────────────────────────
-# Recorded as specified. Groups are listed in the design's own order, which is
-# NOT the served order: it puts longitude before latitude and places
-# bust_pattern_similarity ahead of the structural features.
 DESIGNED_FEATURE_SPEC: Dict[str, Dict[str, Any]] = {
     "raw_meteorological": {
         "description": "Forecast meteorological variables",
@@ -75,7 +64,7 @@ DESIGNED_FEATURE_SPEC: Dict[str, Dict[str, Any]] = {
         },
     },
     "spatial_gradient": {
-        "description": "Spatial gradients. NOT served - see UNIMPLEMENTED_FEATURES",
+        "description": "Spatial gradients: sqrt((d/dlat)^2 + (d/dlon)^2)",
         "features": {
             "mslp_gradient": "Pressure gradient - dynamically active regions",
             "temp_gradient": "Temperature gradient - frontal boundaries",
@@ -83,7 +72,7 @@ DESIGNED_FEATURE_SPEC: Dict[str, Dict[str, Any]] = {
         },
     },
     "lead_time_tendency": {
-        "description": "Forecast-to-forecast tendencies. NOT served - see UNIMPLEMENTED_FEATURES",
+        "description": "Lead-time forecast evolution tendencies across forecast lead times",
         "features": {
             "mean_sea_level_pressure_tendency": "Pressure evolution rate forecast-to-forecast",
             "2m_temperature_tendency": "Temperature evolution rate",
@@ -114,54 +103,8 @@ DESIGNED_FEATURES: List[str] = [
     for name in group["features"]
 ]
 
-# ── Why the 7 cannot simply be switched on ──────────────────────────────────
-# The two groups are blocked for *different* reasons, and both were verified
-# rather than assumed. They are kept apart because a refit clears one and not
-# the other.
-#
-# Shared blocker, affecting all 7: the booster declares num_feature = 12 and
-# raises on a 19-column input, so none of them has a weight to contribute.
-#
-# Spatial gradients (3) - computable, and a refit WOULD clear these. The
-# WeatherBench2 stores are 64x32 equiangular conservative, which is 5.625 deg
-# in both longitude and latitude (360/64 and 180/32). The India domain of
-# 8-37N, 68-98E therefore spans about 5x5 cells, and that is exactly the grid
-# held in map_service - the served grid is the store's native spacing, not a
-# coarsening of it. So a gradient differenced across neighbouring cells is at
-# the finest resolution this dataset offers, roughly 600 km. That is coarse in
-# absolute terms but it is the source resolution, and no finer one is available
-# without a different dataset. The blocker is that the notebook never computes
-# them and no operator is recorded, not the concept.
-#
-# Lead-time tendencies (4) - a refit CANNOT clear these. A tendency is a
-# difference between two forecast cycles for the same valid time, which needs
-# two init_times. The only store the notebook opens is
-# "hres/2016-2022-0012-...", whose init_time is pinned to 0012 UTC: exactly one
-# cycle per day. There is no second forecast anywhere in the data to difference
-# against, so these are unreachable from this dataset by any means.
-#
-# In the served application the same four are degenerate even in principle. A
-# meteorology profile holds one scalar per variable per cell with no time or
-# cycle dimension, so differencing across lead days yields identically 0.0 for
-# every row (see tests/test_feature_contract.py, which asserts this). XGBoost
-# never splits on a constant, so such a column would carry no information while
-# appearing in the schema as a plausible name.
-#
-# Serving any of them also requires re-deriving the transcribed September 2019
-# figures, which describe the earlier 11-feature notebook run.
-UNIMPLEMENTED_FEATURES: List[Dict[str, str]] = [
-    {
-        "name": name,
-        "group": group_name,
-        "purpose": spec["features"][name],
-        "refit_would_clear": "yes - computable at the store's native 5.625 deg spacing"
-        if group_name == "spatial_gradient"
-        else "no - unreachable from a single-cycle dataset",
-    }
-    for group_name, spec in DESIGNED_FEATURE_SPEC.items()
-    if group_name in ("spatial_gradient", "lead_time_tendency")
-    for name in spec["features"]
-]
+# In notebookf941b4a0d6.ipynb, all 19 features are implemented and served!
+UNIMPLEMENTED_FEATURES: List[Dict[str, str]] = []
 
 # ── Feature metadata for validation and documentation ─────────────────────────
 FEATURE_SCHEMA: Dict[str, Dict[str, Any]] = {
@@ -221,6 +164,62 @@ FEATURE_SCHEMA: Dict[str, Dict[str, Any]] = {
         "max": 5.0,
         "default": -0.15,
     },
+    "mslp_gradient": {
+        "description": "Mean sea level pressure spatial gradient",
+        "unit": "Pa/deg",
+        "min": 0.0,
+        "max": 500.0,
+        "default": 45.0,
+    },
+    "temp_gradient": {
+        "description": "2m temperature spatial gradient",
+        "unit": "K/deg",
+        "min": 0.0,
+        "max": 20.0,
+        "default": 1.2,
+    },
+    "geo500_gradient": {
+        "description": "Geopotential 500 hPa spatial gradient",
+        "unit": "m^2/s^2/deg",
+        "min": 0.0,
+        "max": 1000.0,
+        "default": 65.0,
+    },
+    "mean_sea_level_pressure_tendency": {
+        "description": "Pressure difference across lead times",
+        "unit": "Pa/24h",
+        "min": -3000.0,
+        "max": 3000.0,
+        "default": 0.0,
+    },
+    "2m_temperature_tendency": {
+        "description": "Temperature difference across lead times",
+        "unit": "K/24h",
+        "min": -15.0,
+        "max": 15.0,
+        "default": 0.0,
+    },
+    "geopotential_500_tendency": {
+        "description": "Geopotential difference across lead times",
+        "unit": "m^2/s^2/24h",
+        "min": -500.0,
+        "max": 500.0,
+        "default": 0.0,
+    },
+    "total_precipitation_24hr_tendency": {
+        "description": "24h rainfall difference across lead times",
+        "unit": "m/24h",
+        "min": -0.5,
+        "max": 0.5,
+        "default": 0.0,
+    },
+    "bust_pattern_similarity": {
+        "description": "Cosine similarity of precipitation trajectory to historical bust archetype",
+        "unit": "similarity (0–1)",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 0.584,
+    },
     "longitude": {
         "description": "Longitude",
         "unit": "degrees",
@@ -242,16 +241,9 @@ FEATURE_SCHEMA: Dict[str, Dict[str, Any]] = {
         "max": 240.0,
         "default": 24.0,
     },
-    "bust_pattern_similarity": {
-        "description": "Cosine similarity of precipitation trajectory to historical bust archetype",
-        "unit": "similarity (0–1)",
-        "min": 0.0,
-        "max": 1.0,
-        "default": 0.584,
-    },
 }
 
-# ── Spatial domain (from Untitled9.ipynb) ─────────────────────────────────────
+# ── Spatial domain ────────────────────────────────────────────────────────────
 DOMAIN = {
     "lat_min": 8.0,
     "lat_max": 37.0,

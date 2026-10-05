@@ -12,6 +12,13 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+import sys
+
+# Ensure sklearn compatibility shims are active before any test or dependency imports xgboost
+try:
+    from app.core import compat
+except ImportError:
+    pass
 
 import pytest
 

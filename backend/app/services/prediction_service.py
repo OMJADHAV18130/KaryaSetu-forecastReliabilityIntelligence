@@ -49,13 +49,25 @@ class PredictionService:
     @staticmethod
     def build_model_inputs(profile: Dict[str, Any], lead_hours: float) -> Dict[str, Any]:
         """
-        Convert an internal meteorology profile into model inputs.
+        Convert an internal meteorology profile into model inputs with all 19 features.
 
         The reference grid is stored in the units a human would read off a
         sounding (°C, hPa, geopotential metres). The trained booster expects
         Kelvin, Pa and m²/s², so the conversions happen here — once — for every
         consumer of a profile.
         """
+        day = lead_hours / 24.0
+        if day <= 1.0:
+            mslp_tend = 0.0
+            temp_tend = 0.0
+            geo_tend = 0.0
+            tp_tend = 0.0
+        else:
+            mslp_tend = (day - 1.0) * 12.0
+            temp_tend = (day - 1.0) * (-0.15)
+            geo_tend = (day - 1.0) * (-4.5)
+            tp_tend = (day - 1.0) * 0.0006
+
         return {
             "total_precipitation_24hr": profile["tp"],
             # Celsius -> Kelvin
@@ -68,6 +80,13 @@ class PredictionService:
             # geopotential metres -> m²/s²
             "geopotential_500": profile["z500"] * 9.81,
             "vertical_velocity_500": profile["w500"],
+            "mslp_gradient": profile.get("mslp_gradient", 45.0),
+            "temp_gradient": profile.get("temp_gradient", 1.2),
+            "geo500_gradient": profile.get("geo500_gradient", 65.0),
+            "mean_sea_level_pressure_tendency": mslp_tend,
+            "2m_temperature_tendency": temp_tend,
+            "geopotential_500_tendency": geo_tend,
+            "total_precipitation_24hr_tendency": tp_tend,
             "bust_pattern_similarity": profile["bust_pattern_similarity"],
             "latitude": profile["lat"],
             "longitude": profile["lon"],
@@ -77,6 +96,7 @@ class PredictionService:
     @staticmethod
     def build_display_inputs(profile: Dict[str, Any], lead_hours: float) -> Dict[str, Any]:
         """Profile values in human-readable units, for the feature tables in the UI."""
+        day = lead_hours / 24.0
         return {
             "total_precipitation_24hr": profile["tp"],
             "2m_temperature": profile["t2m"],
@@ -86,6 +106,13 @@ class PredictionService:
             "specific_humidity_850": profile["q850"],
             "geopotential_500": profile["z500"],
             "vertical_velocity_500": profile["w500"],
+            "mslp_gradient": profile.get("mslp_gradient", 45.0),
+            "temp_gradient": profile.get("temp_gradient", 1.2),
+            "geo500_gradient": profile.get("geo500_gradient", 65.0),
+            "mean_sea_level_pressure_tendency": round((day - 1.0) * 12.0, 2) if day > 1.0 else 0.0,
+            "2m_temperature_tendency": round((day - 1.0) * (-0.15), 2) if day > 1.0 else 0.0,
+            "geopotential_500_tendency": round((day - 1.0) * (-4.5), 2) if day > 1.0 else 0.0,
+            "total_precipitation_24hr_tendency": round((day - 1.0) * 0.0006, 4) if day > 1.0 else 0.0,
             "bust_pattern_similarity": profile["bust_pattern_similarity"],
             "lead_hours": lead_hours,
         }

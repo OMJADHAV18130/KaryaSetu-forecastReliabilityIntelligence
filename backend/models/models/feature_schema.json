@@ -8,12 +8,19 @@
     "specific_humidity_850",
     "geopotential_500",
     "vertical_velocity_500",
+    "mslp_gradient",
+    "temp_gradient",
+    "geo500_gradient",
+    "mean_sea_level_pressure_tendency",
+    "2m_temperature_tendency",
+    "geopotential_500_tendency",
+    "total_precipitation_24hr_tendency",
+    "bust_pattern_similarity",
     "longitude",
     "latitude",
-    "lead_hours",
-    "bust_pattern_similarity"
+    "lead_hours"
   ],
-  "feature_count": 12,
+  "feature_count": 19,
   "hyperparameters": {
     "learning_rate": 0.02,
     "max_depth": 4,
@@ -30,23 +37,24 @@
     "random_state": 42,
     "n_jobs": -1
   },
-  "model_version": "xgb-rainfall-bust-v2",
-  "model_type": "XGBoost + Sigmoid Calibration",
+  "model_version": "xgb-rainfall-bust-v2-19feat",
+  "model_type": "XGBoost (19 features) + Sigmoid Calibration",
+  "notebook_source": "backend/notebookf941b4a0d6.ipynb",
   "training_period": "June-July 2019",
   "validation_period": "August 2019",
   "test_period": "September 2019",
   "metrics": {
-    "roc_auc": 0.9786,
-    "pr_auc": 0.9798,
-    "mcc": 0.8326,
-    "accuracy": 0.9158,
-    "brier_raw": 0.090584,
-    "brier_calibrated": 0.063264,
+    "roc_auc": 0.9729,
+    "pr_auc": 0.9664,
+    "mcc": 0.7893,
+    "accuracy": 0.8932,
+    "brier_raw": 0.106965,
+    "brier_calibrated": 0.074196,
     "confusion_matrix": {
-      "true_negatives": 347,
-      "false_positives": 44,
-      "false_negatives": 23,
-      "true_positives": 382
+      "true_negatives": 473,
+      "false_positives": 76,
+      "false_negatives": 25,
+      "true_positives": 372
     }
   }
 }

@@ -1,7 +1,7 @@
 {
-  "_comment": "Authoritative evaluation figures transcribed from Untitled9_original_backup.ipynb outputs. These are the numbers the trained model actually achieved and they are NOT produced by any endpoint at runtime - the September 2019 test data cannot be re-scored here. Do not edit by hand; re-transcribe from the notebook if the model is retrained.",
-  "source_notebook": "backend/Untitled9_original_backup.ipynb",
-  "model_variant": "tuned_xgb",
+  "_comment": "Authoritative evaluation figures transcribed from notebookf941b4a0d6.ipynb outputs. These are the numbers the trained model actually achieved and they are NOT produced by any endpoint at runtime - the September 2019 test data cannot be re-scored here. Do not edit by hand; re-transcribe from the notebook if the model is retrained.",
+  "source_notebook": "backend/notebookf941b4a0d6.ipynb",
+  "model_variant": "tuned_xgb (19 features)",
   "feature_columns": [
     "total_precipitation_24hr",
     "2m_temperature",
@@ -11,11 +11,19 @@
     "specific_humidity_850",
     "geopotential_500",
     "vertical_velocity_500",
+    "mslp_gradient",
+    "temp_gradient",
+    "geo500_gradient",
+    "mean_sea_level_pressure_tendency",
+    "2m_temperature_tendency",
+    "geopotential_500_tendency",
+    "total_precipitation_24hr_tendency",
+    "bust_pattern_similarity",
     "longitude",
     "latitude",
     "lead_hours"
   ],
-  "feature_count": 11,
+  "feature_count": 19,
   "splits": {
     "train": "June-July 2019",
     "validation": "August 2019",

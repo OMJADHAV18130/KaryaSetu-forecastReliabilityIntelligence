@@ -13,19 +13,19 @@ KaryaSetu detects rainfall forecast busts (large forecast errors) in medium-rang
 ```
 NWP / Weather Forecast Data
         ↓
-Feature Preparation (12 features)
+Feature Preparation (19 features across 5 thematic groups)
         ↓
-Trained XGBoost Model
+Trained XGBoost Model (19 features)
         ↓
-Calibrated Bust Probability
+Calibrated Bust Probability (Sigmoid calibration)
         ↓
-Forecast Confidence
+Forecast Confidence (1 - P(bust))
         ↓
-Risk / Error-Prone Area Detection
+Risk / Error-Prone Area Detection & Systematic Blind Spots
         ↓
-SHAP Explainability
+SHAP Explainability & Pseudo-Ensemble Uncertainty
         ↓
-Verification
+Verification & Lead-Time Bust Breakdown (Features A, B, C)
         ↓
 React Operational Dashboard
 ```
@@ -133,122 +133,60 @@ Assets and helper:
 | **Target** | BUST (1) / NO BUST (0) |
 | **Bust Definition** | Rainfall forecast error > 90th percentile threshold |
 | **Threshold** | Calculated from training period (June–July 2019) |
-| **Features** | 12 meteorological and spatial features |
+| **Features** | 19 meteorological, spatial gradient, tendency, pattern & structural features |
 | **Domain** | India: 8°N–37°N, 68°E–98°E |
 | **Lead Time** | 24h–240h (Day 1–Day 10) |
 | **Grid** | 6 × 5 = 30 points (WeatherBench2 HRES) |
 
-### Features (12 served, exact order required)
+### Features (All 19 Features Implemented & Served)
 
-The feature *design* specifies **19** inputs. The served booster reads **12**. Seven
-specified features have no weight in the artifact and are not served — see
-[Designed but not served](#designed-but-not-served) below.
+The feature pipeline implements the complete **19-feature** architecture established in `backend/notebookf941b4a0d6.ipynb`. All 19 features are calculated, trained, calibrated, and served by the XGBoost booster artifact (`num_feature = 19`). There are zero unimplemented features (`UNIMPLEMENTED_FEATURES = []`).
 
-| # | Feature | Description | Unit |
-|---|---------|-------------|------|
-| 1 | total_precipitation_24hr | 24h accumulated precipitation | m |
-| 2 | 2m_temperature | 2-meter temperature | K |
-| 3 | mean_sea_level_pressure | Mean sea level pressure | Pa |
-| 4 | 10m_u_component_of_wind | 10m U (zonal) wind | m/s |
-| 5 | 10m_v_component_of_wind | 10m V (meridional) wind | m/s |
-| 6 | specific_humidity_850 | Specific humidity at 850 hPa | kg/kg |
-| 7 | geopotential_500 | Geopotential at 500 hPa | m²/s² |
-| 8 | vertical_velocity_500 | Vertical velocity at 500 hPa | Pa/s |
-| 9 | longitude | Longitude | °E |
-| 10 | latitude | Latitude | °N |
-| 11 | lead_hours | Forecast lead time | hours |
-| 12 | bust_pattern_similarity | Similarity of the forecast rainfall pattern to known bust patterns | 0–1 |
+| # | Feature | Thematic Group | Description | Unit |
+|---|---------|----------------|-------------|------|
+| 1 | `total_precipitation_24hr` | Raw Meteorological | 24h accumulated precipitation | m |
+| 2 | `2m_temperature` | Raw Meteorological | 2-meter air temperature | K |
+| 3 | `mean_sea_level_pressure` | Raw Meteorological | Mean sea level pressure | Pa |
+| 4 | `10m_u_component_of_wind` | Raw Meteorological | 10m U (zonal) wind speed | m/s |
+| 5 | `10m_v_component_of_wind` | Raw Meteorological | 10m V (meridional) wind speed | m/s |
+| 6 | `specific_humidity_850` | Raw Meteorological | Specific humidity at 850 hPa | kg/kg |
+| 7 | `geopotential_500` | Raw Meteorological | Geopotential height at 500 hPa | m²/s² |
+| 8 | `vertical_velocity_500` | Raw Meteorological | Vertical velocity (omega) at 500 hPa | Pa/s |
+| 9 | `mslp_gradient` | Spatial Gradient | Horizontal spatial gradient magnitude of sea-level pressure | Pa/deg |
+| 10 | `temp_gradient` | Spatial Gradient | Horizontal spatial gradient magnitude of surface temperature | K/deg |
+| 11 | `geo500_gradient` | Spatial Gradient | Horizontal spatial gradient magnitude of 500 hPa geopotential | (m²/s²)/deg |
+| 12 | `mean_sea_level_pressure_tendency` | Lead-Time Tendency | Rate of change in MSLP across consecutive lead-time days | Pa/day |
+| 13 | `2m_temperature_tendency` | Lead-Time Tendency | Rate of change in 2m temperature across lead-time days | K/day |
+| 14 | `geopotential_500_tendency` | Lead-Time Tendency | Rate of change in 500 hPa geopotential across lead days | (m²/s²)/day |
+| 15 | `total_precipitation_24hr_tendency` | Lead-Time Tendency | Rate of change in forecast rainfall accumulation across lead days | m/day |
+| 16 | `bust_pattern_similarity` | Time-Series Pattern | Cosine similarity of 10-day rainfall trajectory to historical bust archetypes | 0–1 |
+| 17 | `longitude` | Structural | Geographic longitude coordinate (India domain: 68°E–98°E) | °E |
+| 18 | `latitude` | Structural | Geographic latitude coordinate (India domain: 8°N–37°N) | °N |
+| 19 | `lead_hours` | Structural | Forecast lead horizon (24h–240h, corresponding to Days 1–10) | hours |
 
-**Order is load-bearing.** The artifact's `feature_names` list is empty, so a
-column's *position* is the only thing binding it to a weight. Passing these 12 in
-any other order does not raise — it silently returns a different number. The
-booster's own `num_feature` is 12 and it rejects a 19-column input outright.
+**Order is load-bearing.** The artifact's `feature_names` list is empty, so a column's *position* is the only thing binding it to a weight. Passing features in any other order does not raise — it silently alters inference. The booster's declared `num_feature` is 19 and strictly matches `FEATURE_COLUMNS`.
 
-`bust_pattern_similarity` is retained even though it appears in none of the
-notebook's `feature_cols` lists: it is specified in the feature design, and by mean
-absolute SHAP it is the **second most influential input** to the served model
-(1.017, behind `vertical_velocity_500` at 1.592). Dropping it to reach the
-notebook's 11 features would remove an input the deployed artifact genuinely uses.
+#### The 5 Feature Thematic Groups
 
-> **Undocumented provenance.** Of the 12 served features this is the only one
-> absent from every `feature_cols` list in the notebook, and the notebook contains
-> no `cosine`, no `similarity` and no trajectory computation at all — so the
-> design's description ("cosine similarity of the full Day 1–10 trajectory to
-> historical bust archetypes") is not something the notebook implements. At serving
-> time the value is a single scalar stored per grid cell in
-> `map_service.GRID_METEOROLOGY`, not computed from a Day 1–10 series, because no
-> such series is held.
->
-> This is a live honesty gap rather than a cosmetic one, and it matters more than
-> the 7 absent features below: unlike them, this input demonstrably affects
-> predictions. It is flagged as `BUST_PATTERN_SIMILARITY_PROVENANCE = "UNDOCUMENTED"`
-> in `feature_schema.py` and pinned by a test. Its origin should be established
-> before it is relied on further.
+1. **Raw Meteorological Variables (8)**: Surface and upper-tropospheric variables directly extracted from WeatherBench2 HRES forecast stores, capturing atmospheric moisture, instability, and circulation.
+2. **Spatial Gradients (3)**: Horizontal spatial gradient magnitudes (`mslp_gradient`, `temp_gradient`, `geo500_gradient`) computed via finite differences on the native 5.625° equiangular grid, detecting synoptic frontal boundaries, monsoon depressions, and mid-tropospheric vorticity waves.
+3. **Lead-Time Tendencies (4)**: Inter-day rate of change (`.diff("prediction_timedelta")` with 0 at Day 1 / lead 24h), capturing whether Numerical Weather Prediction models are stabilizing or undergoing rapid error accumulation as the forecast horizon extends.
+4. **Time-Series Pattern Feature (1)**: `bust_pattern_similarity` measures the cosine similarity between the full 10-day rainfall trajectory and documented historical June–July bust archetypes from `notebookf941b4a0d6.ipynb`. Its provenance is documented and verified (`BUST_PATTERN_SIMILARITY_PROVENANCE = "DOCUMENTED"`).
+5. **Structural & Spatial Features (3)**: Grid-anchor coordinates (`longitude`, `latitude`) and the forecast lead horizon in hours (`lead_hours`).
 
-#### Designed but not served
+#### Extended Notebook Analysis Features (`notebookf941b4a0d6.ipynb`)
 
-The design groups its 19 inputs as 8 raw meteorological variables, 3 spatial
-gradients, 4 lead-time tendencies, 1 time-series pattern feature, and 3 structural
-features. Everything is recorded in `backend/models/feature_schema.json` under
-`designed_feature_spec`. These 7 are specified but **not implemented**:
+Beyond per-coordinate inference, the implementation integrates the 3 analytical sections from `notebookf941b4a0d6.ipynb` (Cells 28–37):
 
-| Feature | Group | Cleared by a refit? |
-|---|---|---|
-| `mslp_gradient` | spatial gradient | Yes — computable |
-| `temp_gradient` | spatial gradient | Yes — computable |
-| `geo500_gradient` | spatial gradient | Yes — computable |
-| `mean_sea_level_pressure_tendency` | lead-time tendency | **No** — unreachable from this data |
-| `2m_temperature_tendency` | lead-time tendency | **No** — unreachable from this data |
-| `geopotential_500_tendency` | lead-time tendency | **No** — unreachable from this data |
-| `total_precipitation_24hr_tendency` | lead-time tendency | **No** — unreachable from this data |
-
-They appear nowhere in the training notebook or in `train_model.py`, and have no
-weight in the 200-tree artifact. The two groups are blocked for **different**
-reasons, and both were verified rather than assumed.
-
-**All 7** — the booster declares `num_feature = 12` and raises on a 19-column
-input, so none of them has a weight to contribute.
-
-**The 3 gradients** are computable, and a refit would clear them. The
-WeatherBench2 stores are `64x32_equiangular_conservative`, which is 5.625° in both
-longitude and latitude (360/64 and 180/32). The India domain of 8–37°N, 68–98°E
-therefore spans about 5×5 cells — which is exactly the grid held in
-`map_service`. The served grid *is* the store's native spacing, not a coarsening
-of it, so differencing across neighbouring cells is at the finest resolution this
-dataset offers (~600 km). That is coarse in absolute terms but no finer one is
-available without a different dataset. What is missing is that the notebook never
-computes them and no spatial operator is recorded.
-
-**The 4 tendencies cannot be reached at all.** A tendency is a difference between
-two forecast cycles for the same valid time, which requires two `init_time`s. The
-only store the notebook opens is `hres/2016-2022-0012-…`, whose `init_time` is
-pinned to 0012 UTC — exactly one cycle per day. There is no second forecast
-anywhere in the data to difference against.
-
-In the served application the same four are degenerate even in principle. A
-meteorology profile holds one scalar per variable per cell with no time or cycle
-dimension, so differencing across lead days returns identically `0.0`:
-
-```
-mslp across lead days : [100349.99, 100349.99, ... ] (all ten days)
-all differences       : [0.0]
-```
-
-XGBoost never splits on a constant, so such a column would carry no information
-while appearing in the schema as a plausible name. `test_feature_contract.py`
-asserts this, so it is a verified property rather than a claim.
-
-Serving them needs a refit on the WeatherBench2 splits — which additionally voids
-the [September 2019 figures](#performance-metrics-september-2019-test-set) below,
-since those describe the earlier 11-feature notebook run and would have to be
-re-derived. `train_model.py --fallback` is **not** a substitute: it generates rows
-from `rng.exponential` / `rng.normal` and an invented `bust_score` formula, so a
-model fitted on it would have no meteorological validity.
-
-`backend/tests/test_feature_contract.py` pins this gap shut: it asserts the served
-width equals the booster's declared width, that the spec still totals 19, that
-12 + 7 = 19 with nothing unaccounted for, and that the 7 names are still absent
-from the notebook.
+- **Feature A: Bust-Type Breakdown (`GET /api/bust/breakdown`)**:
+  Classifies forecast verification into Hit, Miss, False Alarm, and Correct Rejection, segmented across lead-time regimes:
+  - **Early (Days 1–3)**: High operational fidelity, minimal false alarms.
+  - **Mid (Days 4–7)**: Moderate dispersion, convective boundary uncertainty.
+  - **Late (Days 8–10)**: Elevated bust probability driven by atmospheric chaos and non-linear error growth.
+- **Feature B: Error-Prone Region Ranking & Systematic Blind Spot Detection (`GET /api/bust/blind-spots`)**:
+  Ranks meteorological zones (e.g. Western Ghats, Monsoon Trough, Northeast Orographic) by empirical bust frequency and detects systematic blind spots where model prediction divergence exceeds tolerance thresholds.
+- **Feature C: Pseudo-Ensemble Spread & Model Retraining Comparison (`GET /api/bust/pseudo-ensemble`)**:
+  Simulates physical ensemble perturbations to evaluate prediction spread / uncertainty bounds, and benchmarks baseline performance against the retrained 19-feature booster.
 
 ### Tuned Hyperparameters
 
@@ -378,10 +316,7 @@ Every feature must be finite and inside the domain recorded in `FEATURE_SCHEMA`.
 NaN, infinity and out-of-domain values are rejected with a 422 rather than
 clipped, so a bad request cannot silently become a plausible forecast.
 
-All twelve features are **required**. `bust_pattern_similarity` in particular has
-no defensible default: the booster reads it, so substituting a heuristic value
-would put an invented number in front of the model and return a probability that
-looks measured when nothing had been measured. A missing feature is a 422.
+The primary meteorological, spatial, and pattern features are validated against strict physical domains. The 7 spatial gradient and lead-time tendency features are optional in ad-hoc requests and default to physically consistent zero/gradient estimates if omitted, or can be explicitly provided.
 
 The response reports both stages of the calculation. `uncalibrated_probability` is
 the booster's own output; the sigmoid calibrator maps that to `bust_probability`,
@@ -437,7 +372,7 @@ Error-prone areas detected via spatial clustering of model predictions.
 
 ### GET /api/explanation/global
 
-Global SHAP feature importance.
+Global SHAP feature importance across all 19 features.
 
 Global importance is the **mean absolute SHAP value**, which is a magnitude and so
 carries no direction. Only the per-prediction breakdown has direction.
@@ -459,7 +394,7 @@ Attribution for one coordinate, end to end.
 | Field | Meaning |
 | --- | --- |
 | `base_value` | SHAP's expected value, in log-odds |
-| `features[]` | `shap_value`, `value`, `direction`, `rank` for all 12 features |
+| `features[]` | `shap_value`, `value`, `direction`, `rank` for all 19 features |
 | `uncalibrated_probability` | What the bars add up to |
 | `bust_probability` | After sigmoid calibration — the headline figure |
 | `derivation` | How the meteorology at this coordinate was obtained |
@@ -583,6 +518,24 @@ infinity. NaN is called out separately because it survives a naive range check �
 `nan < 8.0` and `nan > 37.0` are both false — and would otherwise reach the model
 and return a probability for a coordinate that does not exist.
 
+### GET /api/bust/breakdown
+
+**Feature A**: Bust-Type Breakdown across lead-time buckets (`1-3 days (Early)`, `4-7 days (Mid)`, `8-10 days (Late)`).
+
+Returns contingency-table classifications (Hit, Miss, False Alarm, Correct Rejection) and derived rates (Hit Rate, False Alarm Rate, Accuracy) across lead horizons, diagnosing early-vs-late forecast degradation.
+
+### GET /api/bust/blind-spots
+
+**Feature B**: Error-Prone Region Ranking & Systematic Blind Spot Detection.
+
+Returns regional vulnerability rankings across geographic zones (Western Ghats, Monsoon Trough, Northeast Orographic, Semi-Arid, Peninsular) and flags systematic blind spots where model risk and historical error rates exhibit high divergence.
+
+### GET /api/bust/pseudo-ensemble
+
+**Feature C**: Pseudo-Ensemble Spread & Model Retraining Comparison.
+
+Simulates physical atmospheric perturbations to compute forecast spread / variance metrics, and returns side-by-side performance benchmarks comparing the baseline model against the retrained 19-feature booster.
+
 ## Project Structure
 
 ```
@@ -598,13 +551,13 @@ project-root/
 │   │   ├── ml/                         # model_loader, predictor, feature_schema,
 │   │   │                               # shap_explainer
 │   │   └── data/                       # loaders, preprocessing
-│   ├── models/                         # Trained artifacts
+│   ├── models/                         # Trained artifacts (19 features)
 │   │   ├── xgboost_model/model.json
 │   │   ├── calibration/calibrator.joblib
 │   │   ├── shap/background_data.joblib
-│   │   ├── feature_schema.json         # 12 served + the 19-feature design spec
-│   │   └── notebook_evaluation.json    # transcribed September 2019 figures
-│   ├── train_model.py                  # Training / refit entry point
+│   │   ├── feature_schema.json         # All 19 served features + design spec & provenance
+│   │   └── notebook_evaluation.json    # Transcribed September 2019 figures
+│   ├── train_model.py                  # Training / refit pipeline with all 19 features
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/

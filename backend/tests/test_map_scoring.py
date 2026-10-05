@@ -205,10 +205,17 @@ def test_predict_matrix_agrees_with_predict_row_by_row():
         "specific_humidity_850": 0.0145,
         "geopotential_500": 5810.0 * 9.81,
         "vertical_velocity_500": -0.32,
+        "mslp_gradient": 45.0,
+        "temp_gradient": 1.2,
+        "geo500_gradient": 65.0,
+        "mean_sea_level_pressure_tendency": 12.0,
+        "2m_temperature_tendency": -0.15,
+        "geopotential_500_tendency": -4.5,
+        "total_precipitation_24hr_tendency": 0.0006,
+        "bust_pattern_similarity": 0.51,
         "longitude": 84.375,
         "latitude": 25.3125,
         "lead_hours": 96.0,
-        "bust_pattern_similarity": 0.51,
     }
 
     # Perturb one feature at a time so the rows are genuinely different inputs.

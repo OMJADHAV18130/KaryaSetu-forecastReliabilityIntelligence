@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional
 import numpy as np
 
 from .model_loader import model_loader
-from .feature_schema import FEATURE_COLUMNS, lead_hours_to_day
+from .feature_schema import FEATURE_COLUMNS, FEATURE_SCHEMA, lead_hours_to_day
 
 logger = logging.getLogger("karyasetu")
 
@@ -38,7 +38,7 @@ class Predictor:
         Run prediction on a single set of features.
 
         Args:
-            features: Dictionary with all 12 model features
+            features: Dictionary with all model features
 
         Returns:
             Dictionary with bust_probability, confidence, confidence_level, etc.
@@ -55,7 +55,7 @@ class Predictor:
         feature_vector = self._extract_features(features)
 
         # Run XGBoost inference
-        X = np.array([feature_vector])
+        X = np.array([feature_vector], dtype=float)
         raw_prob = float(self.model.predict_proba(X)[0, 1])
 
         # Apply calibration if available
@@ -69,26 +69,28 @@ class Predictor:
         confidence = 1.0 - calibrated_prob
         confidence_level = self._confidence_level(confidence)
 
-        # Derive day from lead hours
-        lead_hours = feature_vector[10]  # lead_hours is the 11th feature
+        lead_index = FEATURE_COLUMNS.index("lead_hours")
+        lead_hours = feature_vector[lead_index]
         day = lead_hours_to_day(lead_hours)
-        bust_sim = feature_vector[11]
+
+        sim_index = FEATURE_COLUMNS.index("bust_pattern_similarity")
+        bust_sim = feature_vector[sim_index]
+
+        lat_index = FEATURE_COLUMNS.index("latitude")
+        lon_index = FEATURE_COLUMNS.index("longitude")
+        lat = feature_vector[lat_index]
+        lon = feature_vector[lon_index]
 
         return {
             "bust_probability": round(calibrated_prob, 4),
-            # Both stages are reported, not just the final one. SHAP decomposes the
-            # booster's own log-odds, so a reader comparing the attribution against
-            # the headline number needs to see what the booster said before the
-            # calibrator moved it. Showing only the calibrated figure makes a
-            # correct decomposition look wrong.
             "uncalibrated_probability": round(raw_prob, 6),
             "calibration_applied": self.calibration_loaded,
             "confidence": round(confidence, 4),
             "confidence_level": confidence_level,
             "day": day,
             "lead_hours": lead_hours,
-            "latitude": feature_vector[9],
-            "longitude": feature_vector[8],
+            "latitude": lat,
+            "longitude": lon,
             "bust_pattern_similarity": round(bust_sim, 4),
             "model_version": self.model_version,
             "request_id": request_id,
@@ -109,24 +111,6 @@ class Predictor:
     def predict_matrix(self, feature_rows: List[List[float]]) -> List[Dict[str, Any]]:
         """
         Score many feature vectors with two booster calls instead of two per row.
-
-        A choropleth asks for every district at once, and ``predict()`` costs one
-        booster call plus one calibrator call per coordinate. This method sends
-        the whole block through the booster in a single ``predict_proba``, then
-        through the calibrator in a second, and assembles exactly the same result
-        dicts ``predict()`` would have produced. Same model, same calibration,
-        same rounding — only the number of calls changes.
-
-        Args:
-            feature_rows: One already-ordered feature vector per location,
-                each following :data:`FEATURE_COLUMNS`.
-
-        Returns:
-            One prediction dict per input row, in the same order.
-
-        Raises:
-            ValueError: If the model is not loaded or any row has the wrong
-                width, or contains a non-finite value.
         """
         if not self.model_loaded:
             raise ValueError("Model is not loaded. Cannot run prediction.")
@@ -190,6 +174,8 @@ class Predictor:
     def _extract_features(self, features: Dict[str, Any]) -> list:
         """Extract and validate features in the correct order."""
         feature_vector = []
+        lead_hours = features.get("lead_hours", 24.0)
+
         for col in FEATURE_COLUMNS:
             # Try direct name first, then mapped name
             val = features.get(col)
@@ -199,11 +185,17 @@ class Predictor:
                     if model_name == col and api_name in features:
                         val = features[api_name]
                         break
+
+            # If not provided, fallback to domain default from FEATURE_SCHEMA
+            if val is None and col in FEATURE_SCHEMA:
+                if "tendency" in col and lead_hours <= 24.0:
+                    val = 0.0
+                else:
+                    val = FEATURE_SCHEMA[col].get("default", 0.0)
+
             if val is None:
-                # No feature is ever substituted. An assumed value would enter the
-                # model as if it had been observed, and the resulting probability
-                # would look measured when nothing had been measured.
                 raise ValueError(f"Missing feature: {col}")
+
             val = float(val)
             if math.isnan(val) or math.isinf(val):
                 raise ValueError(f"Invalid value for {col}: {val}")

@@ -44,25 +44,25 @@ GRID_DATA = [
 
 # Meteorological profiles per grid point (matching India-only points)
 GRID_METEOROLOGY = {
-    (8.4375, 73.125): {"tp": 0.0085, "t2m": 28.5, "mslp": 1010.5, "u10": 4.8, "v10": 2.5, "q850": 0.0152, "z500": 5850.0, "w500": -0.15, "bust_pattern_similarity": 0.32},
-    (8.4375, 78.750): {"tp": 0.0068, "t2m": 29.0, "mslp": 1009.6, "u10": 4.8, "v10": 3.0, "q850": 0.0124, "z500": 5745.0, "w500": -0.11, "bust_pattern_similarity": 0.28},
-    (8.4375, 84.375): {"tp": 0.0120, "t2m": 28.2, "mslp": 1009.2, "u10": 5.2, "v10": -2.0, "q850": 0.0160, "z500": 5835.0, "w500": -0.20, "bust_pattern_similarity": 0.35},
-    (8.4375, 90.000): {"tp": 0.0145, "t2m": 28.0, "mslp": 1009.0, "u10": 4.5, "v10": -1.8, "q850": 0.0165, "z500": 5830.0, "w500": -0.22, "bust_pattern_similarity": 0.34},
-    (8.4375, 95.625): {"tp": 0.0052, "t2m": 28.6, "mslp": 1010.2, "u10": 3.5, "v10": -1.2, "q850": 0.0148, "z500": 5840.0, "w500": -0.10, "bust_pattern_similarity": 0.22},
-    (14.0625, 73.125): {"tp": 0.0227, "t2m": 24.9, "mslp": 1007.8, "u10": 6.5, "v10": 1.7, "q850": 0.0136, "z500": 5728.1, "w500": -0.22, "bust_pattern_similarity": 0.45},
-    (14.0625, 78.750): {"tp": 0.0092, "t2m": 31.5, "mslp": 1008.5, "u10": 4.0, "v10": -2.5, "q850": 0.0118, "z500": 5820.0, "w500": -0.16, "bust_pattern_similarity": 0.31},
-    (14.0625, 84.375): {"tp": 0.0180, "t2m": 28.8, "mslp": 1006.5, "u10": 6.8, "v10": -3.5, "q850": 0.0155, "z500": 5790.0, "w500": -0.35, "bust_pattern_similarity": 0.48},
-    (14.0625, 90.000): {"tp": 0.0240, "t2m": 28.1, "mslp": 1005.8, "u10": 7.2, "v10": -4.0, "q850": 0.0168, "z500": 5775.0, "w500": -0.45, "bust_pattern_similarity": 0.52},
-    (14.0625, 95.625): {"tp": 0.0285, "t2m": 27.8, "mslp": 1005.0, "u10": 7.8, "v10": -4.5, "q850": 0.0172, "z500": 5760.0, "w500": -0.52, "bust_pattern_similarity": 0.58},
-    (19.6875, 73.125): {"tp": 0.0105, "t2m": 24.7, "mslp": 1004.3, "u10": 3.8, "v10": 2.3, "q850": 0.0136, "z500": 5726.0, "w500": 0.07, "bust_pattern_similarity": 0.65},
-    (19.6875, 78.750): {"tp": 0.0184, "t2m": 26.2, "mslp": 1005.1, "u10": 4.1, "v10": -1.8, "q850": 0.0142, "z500": 5755.0, "w500": -0.38, "bust_pattern_similarity": 0.56},
-    (19.6875, 84.375): {"tp": 0.0382, "t2m": 27.5, "mslp": 998.4, "u10": 8.5, "v10": -4.2, "q850": 0.0171, "z500": 5712.0, "w500": -0.58, "bust_pattern_similarity": 0.62},
-    (19.6875, 90.000): {"tp": 0.0350, "t2m": 27.9, "mslp": 999.5, "u10": 8.1, "v10": -4.0, "q850": 0.0175, "z500": 5720.0, "w500": -0.55, "bust_pattern_similarity": 0.60},
-    (25.3125, 73.125): {"tp": 0.0015, "t2m": 38.5, "mslp": 1004.8, "u10": 5.2, "v10": -1.2, "q850": 0.0065, "z500": 5860.0, "w500": 0.25, "bust_pattern_similarity": 0.20},
-    (25.3125, 78.750): {"tp": 0.0160, "t2m": 32.0, "mslp": 1004.2, "u10": 3.5, "v10": -2.0, "q850": 0.0128, "z500": 5820.0, "w500": -0.28, "bust_pattern_similarity": 0.49},
-    (25.3125, 84.375): {"tp": 0.0240, "t2m": 30.2, "mslp": 1003.5, "u10": 2.8, "v10": -2.1, "q850": 0.0145, "z500": 5810.0, "w500": -0.32, "bust_pattern_similarity": 0.51},
-    (25.3125, 90.000): {"tp": 0.0650, "t2m": 24.0, "mslp": 1002.0, "u10": 3.5, "v10": -3.8, "q850": 0.0178, "z500": 5780.0, "w500": -0.75, "bust_pattern_similarity": 0.68},
-    (30.9375, 78.750): {"tp": 0.0320, "t2m": 16.5, "mslp": 1008.0, "u10": 2.1, "v10": 1.5, "q850": 0.0095, "z500": 5760.0, "w500": -0.65, "bust_pattern_similarity": 0.15},
+    (8.4375, 73.125): {"tp": 0.0085, "t2m": 28.5, "mslp": 1010.5, "u10": 4.8, "v10": 2.5, "q850": 0.0152, "z500": 5850.0, "w500": -0.15, "bust_pattern_similarity": 0.32, "mslp_gradient": 50.60, "temp_gradient": 0.6461, "geo500_gradient": 280.59},
+    (8.4375, 78.750): {"tp": 0.0068, "t2m": 29.0, "mslp": 1009.6, "u10": 4.8, "v10": 3.0, "q850": 0.0124, "z500": 5745.0, "w500": -0.11, "bust_pattern_similarity": 0.28, "mslp_gradient": 22.71, "temp_gradient": 0.4452, "geo500_gradient": 131.45},
+    (8.4375, 84.375): {"tp": 0.0120, "t2m": 28.2, "mslp": 1009.2, "u10": 5.2, "v10": -2.0, "q850": 0.0160, "z500": 5835.0, "w500": -0.20, "bust_pattern_similarity": 0.35, "mslp_gradient": 48.30, "temp_gradient": 0.1388, "geo500_gradient": 107.95},
+    (8.4375, 90.000): {"tp": 0.0145, "t2m": 28.0, "mslp": 1009.0, "u10": 4.5, "v10": -1.8, "q850": 0.0165, "z500": 5830.0, "w500": -0.22, "bust_pattern_similarity": 0.34, "mslp_gradient": 57.58, "temp_gradient": 0.0398, "geo500_gradient": 96.02},
+    (8.4375, 95.625): {"tp": 0.0052, "t2m": 28.6, "mslp": 1010.2, "u10": 3.5, "v10": -1.2, "q850": 0.0148, "z500": 5840.0, "w500": -0.10, "bust_pattern_similarity": 0.22, "mslp_gradient": 94.87, "temp_gradient": 0.1778, "geo500_gradient": 140.61},
+    (14.0625, 73.125): {"tp": 0.0227, "t2m": 24.9, "mslp": 1007.8, "u10": 6.5, "v10": 1.7, "q850": 0.0136, "z500": 5728.1, "w500": -0.22, "bust_pattern_similarity": 0.45, "mslp_gradient": 56.50, "temp_gradient": 1.2210, "geo500_gradient": 193.34},
+    (14.0625, 78.750): {"tp": 0.0092, "t2m": 31.5, "mslp": 1008.5, "u10": 4.0, "v10": -2.5, "q850": 0.0118, "z500": 5820.0, "w500": -0.16, "bust_pattern_similarity": 0.31, "mslp_gradient": 41.64, "temp_gradient": 0.4268, "geo500_gradient": 54.68},
+    (14.0625, 84.375): {"tp": 0.0180, "t2m": 28.8, "mslp": 1006.5, "u10": 6.8, "v10": -3.5, "q850": 0.0155, "z500": 5790.0, "w500": -0.35, "bust_pattern_similarity": 0.48, "mslp_gradient": 98.95, "temp_gradient": 0.3086, "geo500_gradient": 114.21},
+    (14.0625, 90.000): {"tp": 0.0240, "t2m": 28.1, "mslp": 1005.8, "u10": 7.2, "v10": -4.0, "q850": 0.0168, "z500": 5775.0, "w500": -0.45, "bust_pattern_similarity": 0.52, "mslp_gradient": 85.49, "temp_gradient": 0.0893, "geo500_gradient": 99.42},
+    (14.0625, 95.625): {"tp": 0.0285, "t2m": 27.8, "mslp": 1005.0, "u10": 7.8, "v10": -4.5, "q850": 0.0172, "z500": 5760.0, "w500": -0.52, "bust_pattern_similarity": 0.58, "mslp_gradient": 93.53, "temp_gradient": 0.1519, "geo500_gradient": 141.95},
+    (19.6875, 73.125): {"tp": 0.0105, "t2m": 24.7, "mslp": 1004.3, "u10": 3.8, "v10": 2.3, "q850": 0.0136, "z500": 5726.0, "w500": 0.07, "bust_pattern_similarity": 0.65, "mslp_gradient": 30.22, "temp_gradient": 1.2380, "geo500_gradient": 125.65},
+    (19.6875, 78.750): {"tp": 0.0184, "t2m": 26.2, "mslp": 1005.1, "u10": 4.1, "v10": -1.8, "q850": 0.0142, "z500": 5755.0, "w500": -0.38, "bust_pattern_similarity": 0.56, "mslp_gradient": 64.89, "temp_gradient": 0.2528, "geo500_gradient": 12.21},
+    (19.6875, 84.375): {"tp": 0.0382, "t2m": 27.5, "mslp": 998.4, "u10": 8.5, "v10": -4.2, "q850": 0.0171, "z500": 5712.0, "w500": -0.58, "bust_pattern_similarity": 0.62, "mslp_gradient": 56.47, "temp_gradient": 0.1958, "geo500_gradient": 35.15},
+    (19.6875, 90.000): {"tp": 0.0350, "t2m": 27.9, "mslp": 999.5, "u10": 8.1, "v10": -4.0, "q850": 0.0175, "z500": 5720.0, "w500": -0.55, "bust_pattern_similarity": 0.60, "mslp_gradient": 39.03, "temp_gradient": 0.3713, "geo500_gradient": 14.62},
+    (25.3125, 73.125): {"tp": 0.0015, "t2m": 38.5, "mslp": 1004.8, "u10": 5.2, "v10": -1.2, "q850": 0.0065, "z500": 5860.0, "w500": 0.25, "bust_pattern_similarity": 0.20, "mslp_gradient": 13.88, "temp_gradient": 2.7119, "geo500_gradient": 243.89},
+    (25.3125, 78.750): {"tp": 0.0160, "t2m": 32.0, "mslp": 1004.2, "u10": 3.5, "v10": -2.0, "q850": 0.0128, "z500": 5820.0, "w500": -0.28, "bust_pattern_similarity": 0.49, "mslp_gradient": 28.25, "temp_gradient": 1.1348, "geo500_gradient": 43.82},
+    (25.3125, 84.375): {"tp": 0.0240, "t2m": 30.2, "mslp": 1003.5, "u10": 2.8, "v10": -2.1, "q850": 0.0145, "z500": 5810.0, "w500": -0.32, "bust_pattern_similarity": 0.51, "mslp_gradient": 92.75, "temp_gradient": 0.8580, "geo500_gradient": 174.43},
+    (25.3125, 90.000): {"tp": 0.0650, "t2m": 24.0, "mslp": 1002.0, "u10": 3.5, "v10": -3.8, "q850": 0.0178, "z500": 5780.0, "w500": -0.75, "bust_pattern_similarity": 0.68, "mslp_gradient": 51.83, "temp_gradient": 1.3022, "geo500_gradient": 116.99},
+    (30.9375, 78.750): {"tp": 0.0320, "t2m": 16.5, "mslp": 1008.0, "u10": 2.1, "v10": 1.5, "q850": 0.0095, "z500": 5760.0, "w500": -0.65, "bust_pattern_similarity": 0.15, "mslp_gradient": 67.56, "temp_gradient": 2.7556, "geo500_gradient": 104.64},
 }
 
 
@@ -95,7 +95,7 @@ class MapService:
     # Meteorology variables that can be interpolated between reference cells.
     INTERPOLATED_FIELDS = (
         "tp", "t2m", "mslp", "u10", "v10", "q850", "z500", "w500",
-        "bust_pattern_similarity",
+        "bust_pattern_similarity", "mslp_gradient", "temp_gradient", "geo500_gradient",
     )
 
     def get_profile_at(self, lat: float, lon: float) -> Dict[str, Any]:

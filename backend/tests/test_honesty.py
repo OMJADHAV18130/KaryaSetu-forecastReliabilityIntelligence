@@ -276,7 +276,7 @@ def test_feature_contract_is_complete_and_ordered(client, feature_schema):
     """The API must read the features the artifact declares, in that order."""
     body = client.get("/api/model-info").json()
     assert body["features"] == feature_schema["features"], "feature order drifted"
-    assert body["feature_count"] == len(body["features"]) == 12
+    assert body["feature_count"] == len(body["features"]) == 19
 
     # Every declared feature must reach the model. Latitude and longitude travel
     # beside model_inputs rather than inside it, so they are checked at top level.
@@ -336,7 +336,7 @@ def test_local_attribution_decomposes_the_returned_probability(client):
     # Attribution covers every feature the booster reads, including the two
     # coordinates that travel outside model_inputs.
     contributions = [row["shap_value"] for row in body["features"]]
-    assert len(contributions) == 12
+    assert len(contributions) == 19
     assert {row["feature"] for row in body["features"]} == {
         "total_precipitation_24hr",
         "2m_temperature",
@@ -346,10 +346,17 @@ def test_local_attribution_decomposes_the_returned_probability(client):
         "specific_humidity_850",
         "geopotential_500",
         "vertical_velocity_500",
+        "mslp_gradient",
+        "temp_gradient",
+        "geo500_gradient",
+        "mean_sea_level_pressure_tendency",
+        "2m_temperature_tendency",
+        "geopotential_500_tendency",
+        "total_precipitation_24hr_tendency",
+        "bust_pattern_similarity",
         "longitude",
         "latitude",
         "lead_hours",
-        "bust_pattern_similarity",
     }
 
     # base_value is SHAP's expected value in log-odds. The decomposition is exact
