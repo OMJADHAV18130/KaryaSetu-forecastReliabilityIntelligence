@@ -1,4 +1,4 @@
-import { X, MapPin, Clock, BarChart3, CheckCircle } from 'lucide-react';
+import { X, MapPin, Clock, BarChart3 } from 'lucide-react';
 import type { ForecastPoint } from '../../types';
 
 interface LocationDrawerProps {
@@ -6,10 +6,9 @@ interface LocationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onExplain?: () => void;
-  onVerify?: () => void;
 }
 
-export default function LocationDrawer({ point, isOpen, onClose, onExplain, onVerify }: LocationDrawerProps) {
+export default function LocationDrawer({ point, isOpen, onClose, onExplain }: LocationDrawerProps) {
   if (!isOpen || !point) return null;
 
   return (
@@ -121,7 +120,7 @@ export default function LocationDrawer({ point, isOpen, onClose, onExplain, onVe
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 mt-6">
+        <div className="mt-6">
           <button
             onClick={onExplain}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-brand hover:bg-brand/90 text-ink rounded-lg text-sm transition-colors"

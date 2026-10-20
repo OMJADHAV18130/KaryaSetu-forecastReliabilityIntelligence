@@ -185,7 +185,6 @@ export default function Overview() {
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onExplain={() => {}}
-        onVerify={() => {}}
       />
     </div>
   );
